@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 7%;
+    --foreground: 210 40% 98%;
+    --card: 0 0% 10%;
+    --card-foreground: 210 40% 98%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 0 84.2% 60.2%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 0 0% 16%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 0 84.2% 60.2%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background:
+      linear-gradient(90deg, rgba(127, 29, 29, 0.18), transparent 24%, transparent 76%, rgba(113, 63, 18, 0.14)),
+      hsl(var(--background));
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
+
+/* Pokemon type colors */
+.type-fire { @apply bg-red-500 text-white; }
+.type-water { @apply bg-blue-500 text-white; }
+.type-grass { @apply bg-green-500 text-white; }
+.type-lightning { @apply bg-yellow-500 text-black; }
+.type-psychic { @apply bg-purple-500 text-white; }
+.type-fighting { @apply bg-orange-700 text-white; }
+.type-darkness { @apply bg-slate-800 text-white; }
+.type-metal { @apply bg-gray-500 text-white; }
+.type-fairy { @apply bg-pink-400 text-white; }
+.type-dragon { @apply bg-indigo-600 text-white; }
+.type-colorless { @apply bg-gray-300 text-black; }

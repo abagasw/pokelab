@@ -1,0 +1,13 @@
+---
+import Layout from '@layouts/Layout.astro';
+import UserProfile from '@components/auth/UserProfile';
+---
+
+<Layout title="Profil Saya">
+  <div class="container py-8">
+    <div class="max-w-2xl mx-auto">
+      <h1 class="text-3xl font-bold mb-8">Profil Saya</h1>
+      <UserProfile client:load />
+    </div>
+  </div>
+</Layout>

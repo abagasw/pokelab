@@ -1,0 +1,27 @@
+---
+import Layout from '@layouts/Layout.astro';
+import RegisterForm from '@components/auth/RegisterForm';
+---
+
+<Layout title="Register">
+  <div class="container flex min-h-[calc(100vh-200px)] items-center justify-center px-6 py-10 md:px-8">
+    <div class="w-full max-w-md space-y-6">
+      <div class="text-center space-y-2">
+        <p class="text-xs font-semibold uppercase text-primary">PokeLab ID</p>
+        <h1 class="text-3xl font-bold">Buat Akun Research</h1>
+        <p class="text-muted-foreground">
+          Simpan inventory kartu agar PokeLab bisa menghitung deck readiness dan missing card.
+        </p>
+      </div>
+
+      <RegisterForm client:load />
+
+      <p class="text-center text-sm text-muted-foreground">
+        Sudah punya akun?{' '}
+        <a href="/login" class="font-medium text-primary hover:underline">
+          Login di sini
+        </a>
+      </p>
+    </div>
+  </div>
+</Layout>

@@ -1,0 +1,29 @@
+---
+import Layout from '@layouts/Layout.astro';
+import CollectionDetailView from '@components/collections/CollectionDetailView';
+
+// In static mode, we'll get the ID from URL search params on the client side
+---
+
+<Layout title="Detail Koleksi">
+  <div class="container py-8">
+    <div id="collection-detail-root"></div>
+  </div>
+</Layout>
+
+<script>
+  import { renderCollectionDetail } from '@components/collections/CollectionDetailView';
+  
+  // Get collection ID from URL query param
+  const urlParams = new URLSearchParams(window.location.search);
+  const id = urlParams.get('id');
+  
+  if (id) {
+    const container = document.getElementById('collection-detail-root');
+    if (container) {
+      renderCollectionDetail(container, id);
+    }
+  } else {
+    window.location.href = '/collections';
+  }
+</script>

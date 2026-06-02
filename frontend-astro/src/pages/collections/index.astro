@@ -1,0 +1,43 @@
+---
+import Layout from '@layouts/Layout.astro';
+import PageHeader from '@components/layout/PageHeader.astro';
+import CollectionList from '@components/collections/CollectionList';
+import { FlaskConical, Package } from 'lucide-react';
+---
+
+<Layout title="Inventory">
+  <div class="container px-6 py-10 md:px-8">
+    <PageHeader
+      eyebrow="Inventory"
+      title="Koleksi Kartu"
+      description="Kelola kartu milikmu sebagai sumber utama scoring PokeLab: deck readiness, missing card, dan budget upgrade priority."
+    >
+      <a
+        slot="actions"
+        href="/lab/recommendations"
+        class="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        <FlaskConical className="h-4 w-4" />
+        Analisis deck
+      </a>
+    </PageHeader>
+
+    <div class="mb-6 grid gap-3 md:grid-cols-3">
+      {[
+        ['Login required', 'Inventory disimpan per user untuk menjaga rekomendasi tetap privat.'],
+        ['Quantity-aware', 'Scoring menghitung jumlah kartu, bukan hanya nama kartu yang dimiliki.'],
+        ['Buy priority', 'Gap deck dipadukan dengan harga IDR terbaik yang tersedia.'],
+      ].map(([title, body]) => (
+        <div class="rounded-md border border-border bg-card p-4">
+          <div class="mb-2 flex items-center gap-2 text-sm font-semibold">
+            <Package className="h-4 w-4 text-primary" />
+            {title}
+          </div>
+          <p class="text-sm leading-relaxed text-muted-foreground">{body}</p>
+        </div>
+      ))}
+    </div>
+
+    <CollectionList client:load />
+  </div>
+</Layout>

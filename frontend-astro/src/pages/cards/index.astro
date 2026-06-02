@@ -1,0 +1,27 @@
+---
+import Layout from '@layouts/Layout.astro';
+import PageHeader from '@components/layout/PageHeader.astro';
+import CardGridContainer from '@components/cards/CardGridContainer';
+import { Search } from 'lucide-react';
+---
+
+<Layout title="Kartu Pokemon TCG">
+  <div class="container px-6 py-10 md:px-8">
+    <PageHeader
+      eyebrow="Card Database"
+      title="Kartu Pokemon TCG"
+      description="Cari kartu, cek expansion, dan pakai database ini sebagai referensi sebelum menyusun deck atau inventory PokeLab."
+    >
+      <a
+        slot="actions"
+        href="/lab"
+        class="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-semibold transition-colors hover:bg-accent"
+      >
+        <Search className="h-4 w-4 text-primary" />
+        Pakai untuk research
+      </a>
+    </PageHeader>
+
+    <CardGridContainer client:load limit={24} />
+  </div>
+</Layout>

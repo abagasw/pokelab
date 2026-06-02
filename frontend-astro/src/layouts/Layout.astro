@@ -1,0 +1,67 @@
+---
+import Navigation from '@components/layout/Navigation';
+
+export interface Props {
+  title: string;
+  description?: string;
+}
+
+const {
+  title,
+  description = 'PokeLab ID - Research lab Pokemon TCG Indonesia untuk deck meta, inventory gap, price radar, dan rekomendasi kompetitif.',
+} = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={description} />
+    <title>{title} | PokeLab ID</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body class="min-h-screen bg-background font-sans text-foreground antialiased">
+    <script>
+      import { initAuth } from '../stores/authStore';
+      initAuth();
+    </script>
+
+    <Navigation client:load />
+
+    <main class="min-h-[calc(100vh-12rem)] flex-1">
+      <slot />
+    </main>
+
+    <footer class="mt-16 border-t border-white/10 bg-[#111111]/90">
+      <div class="container flex flex-col gap-6 px-6 py-8 md:flex-row md:items-center md:justify-between md:px-8">
+        <div>
+          <p class="text-sm font-bold text-foreground">PokeLab ID</p>
+          <p class="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+            Fan-made research toolkit untuk Pokemon TCG Indonesia. Tidak berafiliasi dengan The Pokemon Company, Nintendo, Creatures, atau Game Freak.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          <a href="/lab" class="transition-colors hover:text-red-300">Lab</a>
+          <a href="/cards" class="transition-colors hover:text-red-300">Kartu</a>
+          <a href="/decks" class="transition-colors hover:text-red-300">Deck</a>
+          <a href="/collections" class="transition-colors hover:text-red-300">Inventory</a>
+          <a href="/prices" class="transition-colors hover:text-red-300">Harga</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style is:global>
+  @import '../styles/global.css';
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+</style>

@@ -60,3 +60,13 @@ temp/
 
 # Local data directory (not tracked)
 data/
+
+# Dev tools and temporary files
+.tools/
+session-*.zip
+pokemon_tcg.db
+preview.html
+docs/
+
+# Card images (too large for git)
+frontend-astro/public/card-images/

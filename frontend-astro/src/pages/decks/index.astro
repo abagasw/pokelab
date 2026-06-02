@@ -1,0 +1,51 @@
+---
+import Layout from '@layouts/Layout.astro';
+import PageHeader from '@components/layout/PageHeader.astro';
+import DeckBuilder from '@components/decks/DeckBuilder';
+import DeckListContainer from '@components/decks/DeckListContainer';
+import { FlaskConical, Layers3, Sparkles } from 'lucide-react';
+
+const tab = Astro.url.searchParams.get('tab') || 'list';
+---
+
+<Layout title="Deck Pokemon TCG">
+  <div class="container px-6 py-10 md:px-8">
+    <PageHeader
+      eyebrow="Deck Workbench"
+      title="Deck Pokemon TCG"
+      description="Jelajahi deck kompetitif, buka builder, lalu bandingkan dengan inventory melalui rekomendasi PokeLab."
+    >
+      <a
+        slot="actions"
+        href="/lab/recommendations"
+        class="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+      >
+        <FlaskConical className="h-4 w-4" />
+        Rekomendasi dari inventory
+      </a>
+    </PageHeader>
+
+    <div class="mb-6 flex flex-wrap gap-2 border-b border-border pb-4" aria-label="Tabs">
+      <a
+        href="/decks?tab=list"
+        class={`inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors ${
+          tab === 'list' ? 'bg-primary/10 text-primary ring-1 ring-primary/20' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+        }`}
+      >
+        <Layers3 className="h-4 w-4" />
+        List Deck
+      </a>
+      <a
+        href="/decks?tab=builder"
+        class={`inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors ${
+          tab === 'builder' ? 'bg-primary/10 text-primary ring-1 ring-primary/20' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+        }`}
+      >
+        <Sparkles className="h-4 w-4" />
+        AI Deck Builder
+      </a>
+    </div>
+
+    {tab === 'list' ? <DeckListContainer client:load limit={24} /> : <DeckBuilder client:load />}
+  </div>
+</Layout>

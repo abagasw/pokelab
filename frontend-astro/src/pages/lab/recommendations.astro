@@ -1,0 +1,10 @@
+---
+import Layout from '@layouts/Layout.astro';
+import ResearchLab from '@components/research/ResearchLab';
+---
+
+<Layout title="PokeLab ID - Deck Recommendations">
+  <div class="container px-6 py-10 md:px-8">
+    <ResearchLab client:load mode="recommendations" />
+  </div>
+</Layout>
