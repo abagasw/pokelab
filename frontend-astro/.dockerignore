@@ -1,0 +1,8 @@
+node_modules
+dist
+.astro
+.npm-cache
+public/card-images/
+.env
+.env.*
+npm-debug.log*

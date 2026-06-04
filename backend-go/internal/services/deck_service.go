@@ -382,17 +382,18 @@ func (s *DeckService) getDecklistCards(ctx context.Context, decklistID string) (
 
 // BuildDeck builds a deck using AI
 func (s *DeckService) BuildDeck(ctx context.Context, req models.DeckBuildRequest) (*models.DeckBuildResponse, error) {
-	// Query available cards from database
-	availableCards, err := s.getAvailableCardsForDeckBuild(ctx, req)
-	if err != nil {
-		// Fallback to template deck if query fails
-		return s.buildFallbackDeck(ctx, req)
+	availableCards := "[]"
+	if req.UseInventory {
+		var err error
+		availableCards, err = s.getAvailableCardsForDeckBuild(ctx, req)
+		if err != nil {
+			// Fallback to template deck if query fails
+			return s.buildFallbackDeck(ctx, req)
+		}
 	}
 
 	prefJSON, _ := json.Marshal(req)
-	aiResponse, err := s.aiService.BuildDeck(ctx, map[string]interface{}{
-		"preferences": string(prefJSON),
-	}, availableCards)
+	aiResponse, err := s.buildDeckWithAITimeout(ctx, prefJSON, availableCards, 8*time.Second)
 
 	if err != nil {
 		// Fallback if AI fails
@@ -406,6 +407,33 @@ func (s *DeckService) BuildDeck(ctx context.Context, req models.DeckBuildRequest
 	}
 
 	return response, nil
+}
+
+func (s *DeckService) buildDeckWithAITimeout(ctx context.Context, prefJSON []byte, availableCards string, timeout time.Duration) (string, error) {
+	type aiResult struct {
+		response string
+		err      error
+	}
+
+	aiCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	resultCh := make(chan aiResult, 1)
+	go func() {
+		response, err := s.aiService.BuildDeck(aiCtx, map[string]interface{}{
+			"preferences": string(prefJSON),
+		}, availableCards)
+		resultCh <- aiResult{response: response, err: err}
+	}()
+
+	select {
+	case result := <-resultCh:
+		return result.response, result.err
+	case <-time.After(timeout):
+		return "", fmt.Errorf("ai deck builder timed out after %s", timeout)
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 // getAvailableCardsForDeckBuild queries cards from database for deck building
@@ -684,85 +712,61 @@ func (s *DeckService) parseDeckFromText(text string, req models.DeckBuildRequest
 }
 
 // buildFallbackDeck creates a template deck when AI fails
-func (s *DeckService) buildFallbackDeck(ctx context.Context, req models.DeckBuildRequest) (*models.DeckBuildResponse, error) {
+func (s *DeckService) buildFallbackDeck(_ context.Context, req models.DeckBuildRequest) (*models.DeckBuildResponse, error) {
 	response := &models.DeckBuildResponse{
 		Name:        req.Name,
-		Description: "Template deck generated from popular cards",
-		Archetype:   "Balance",
+		Description: "Template cepat saat AI belum tersedia. Gunakan sebagai starting point, lalu validasi dengan scout report dan deck analysis.",
+		Archetype:   "AI Fallback Tempo",
 	}
 
-	// Query some popular Pokemon cards
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name_id, category
-		FROM cards
-		WHERE category = 'Pokemon' AND hp > 0
-		ORDER BY RANDOM()
-		LIMIT 10
-	`)
-	if err == nil {
-		defer rows.Close()
-		count := 0
-		for rows.Next() && count < 6 {
-			var id, name, category string
-			if err := rows.Scan(&id, &name, &category); err == nil {
-				response.Cards.Pokemon = append(response.Cards.Pokemon, models.DeckCard{
-					CardID:   id,
-					CardName: name,
-					Count:    2,
-				})
-				response.TotalCards += 2
-				count++
-			}
-		}
+	pokemon := []models.DeckCard{
+		{CardName: "Main Attacker ex", Count: 3},
+		{CardName: "Basic Main Attacker", Count: 4},
+		{CardName: "Backup Attacker", Count: 2},
+		{CardName: "Draw Engine Pokemon", Count: 3},
+		{CardName: "Setup Pokemon", Count: 3},
+		{CardName: "Utility Pokemon", Count: 3},
+	}
+	trainer := []models.DeckCard{
+		{CardName: "Professor's Research", Count: 4},
+		{CardName: "Iono", Count: 4},
+		{CardName: "Boss's Orders", Count: 3},
+		{CardName: "Ultra Ball", Count: 4},
+		{CardName: "Nest Ball", Count: 4},
+		{CardName: "Rare Candy", Count: 4},
+		{CardName: "Switch", Count: 2},
+		{CardName: "Super Rod", Count: 2},
+		{CardName: "Counter Catcher", Count: 2},
+		{CardName: "Stadium Slot", Count: 3},
+	}
+	energy := []models.DeckCard{
+		{CardName: "Basic Energy", Count: 10},
 	}
 
-	// Query Trainer cards
-	rows2, err := s.db.QueryContext(ctx, `
-		SELECT id, name_id
-		FROM cards
-		WHERE category = 'Trainer'
-		ORDER BY RANDOM()
-		LIMIT 15
-	`)
-	if err == nil {
-		defer rows2.Close()
-		count := 0
-		for rows2.Next() && count < 10 {
-			var id, name string
-			if err := rows2.Scan(&id, &name); err == nil {
-				response.Cards.Trainer = append(response.Cards.Trainer, models.DeckCard{
-					CardID:   id,
-					CardName: name,
-					Count:    2,
-				})
-				response.TotalCards += 2
-				count++
-			}
-		}
+	response.Cards.Pokemon = pokemon
+	response.Cards.Trainer = trainer
+	response.Cards.Energy = energy
+	for _, card := range pokemon {
+		response.TotalCards += card.Count
+	}
+	for _, card := range trainer {
+		response.TotalCards += card.Count
+	}
+	for _, card := range energy {
+		response.TotalCards += card.Count
 	}
 
-	// Add basic energy
-	energyTypes := []string{"Fire", "Water", "Grass", "Lightning", "Psychic", "Fighting"}
-	for _, t := range energyTypes {
-		response.Cards.Energy = append(response.Cards.Energy, models.DeckCard{
-			CardName: t + " Energy",
-			Count:    2,
-		})
-		response.TotalCards += 2
-	}
-
-	// Pad to 60 cards if needed
-	if response.TotalCards < 60 {
-		needed := 60 - response.TotalCards
-		response.Cards.Energy = append(response.Cards.Energy, models.DeckCard{
-			CardName: "Basic Energy",
-			Count:    needed,
-		})
-		response.TotalCards += needed
-	}
-
-	response.Analysis.Playstyle = "Balanced"
+	response.Analysis.Playstyle = "Tempo setup"
 	response.Analysis.CompetitiveRating = 5.0
+	response.Analysis.Strengths = []string{
+		"Respons cepat walau OpenRouter tidak tersedia.",
+		"Rasio Pokemon, Trainer, dan Energy dibuat sebagai skeleton 60 kartu yang mudah diedit.",
+	}
+	response.Analysis.Weaknesses = []string{
+		"Nama kartu masih placeholder saat AI atau inventory tidak tersedia.",
+		"Perlu diganti dengan kartu legal dan diuji dari deck analysis sebelum dipakai turnamen.",
+	}
+	response.Analysis.KeyCards = []string{"Main Attacker ex", "Draw Engine Pokemon", "Professor's Research", "Iono"}
 	response.Pricing.WithinBudget = true
 
 	return response, nil

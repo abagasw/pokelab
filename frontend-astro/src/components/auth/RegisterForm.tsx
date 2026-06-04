@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { useAuthStore } from '@stores/authStore';
 
+const getSafeRedirect = () => {
+  if (typeof window === 'undefined') return '/collections';
+  const redirect = new URLSearchParams(window.location.search).get('redirect');
+  if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
+    return redirect;
+  }
+  return '/collections';
+};
+
 export default function RegisterForm() {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -8,15 +17,22 @@ export default function RegisterForm() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [validationError, setValidationError] = useState('');
-  
+
   const { register, loading, error, clearError } = useAuthStore();
+
+  const clearFormError = () => {
+    clearError();
+    setValidationError('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    clearError();
-    setValidationError('');
+    clearFormError();
 
-    // Validation
+    const cleanEmail = email.trim();
+    const cleanUsername = username.trim();
+    const cleanFullName = fullName.trim();
+
     if (password !== confirmPassword) {
       setValidationError('Password tidak cocok');
       return;
@@ -27,20 +43,20 @@ export default function RegisterForm() {
       return;
     }
 
-    if (username.length < 3) {
+    if (cleanUsername.length < 3) {
       setValidationError('Username minimal 3 karakter');
       return;
     }
 
     const success = await register({
-      email,
-      username,
+      email: cleanEmail,
+      username: cleanUsername,
       password,
-      full_name: fullName,
+      full_name: cleanFullName,
     });
 
     if (success) {
-      window.location.href = '/';
+      window.location.href = getSafeRedirect();
     }
   };
 
@@ -49,7 +65,7 @@ export default function RegisterForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {displayError && (
-        <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
+        <div className="rounded-md border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-300">
           {displayError}
         </div>
       )}
@@ -62,10 +78,14 @@ export default function RegisterForm() {
           id="email"
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(event) => {
+            clearFormError();
+            setEmail(event.target.value);
+          }}
           placeholder="nama@email.com"
           required
-          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          autoComplete="email"
+          className="w-full rounded-md border border-input bg-card px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
@@ -77,11 +97,15 @@ export default function RegisterForm() {
           id="username"
           type="text"
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(event) => {
+            clearFormError();
+            setUsername(event.target.value);
+          }}
           placeholder="username"
           required
           minLength={3}
-          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          autoComplete="username"
+          className="w-full rounded-md border border-input bg-card px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
@@ -93,9 +117,10 @@ export default function RegisterForm() {
           id="fullName"
           type="text"
           value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-          placeholder="John Doe"
-          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          onChange={(event) => setFullName(event.target.value)}
+          placeholder="Nama pemain"
+          autoComplete="name"
+          className="w-full rounded-md border border-input bg-card px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
@@ -107,11 +132,15 @@ export default function RegisterForm() {
           id="password"
           type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
+          onChange={(event) => {
+            clearFormError();
+            setPassword(event.target.value);
+          }}
+          placeholder="********"
           required
           minLength={8}
-          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          autoComplete="new-password"
+          className="w-full rounded-md border border-input bg-card px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
@@ -123,19 +152,23 @@ export default function RegisterForm() {
           id="confirmPassword"
           type="password"
           value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="••••••••"
+          onChange={(event) => {
+            clearFormError();
+            setConfirmPassword(event.target.value);
+          }}
+          placeholder="********"
           required
-          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          autoComplete="new-password"
+          className="w-full rounded-md border border-input bg-card px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full py-2 px-4 bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full rounded-md bg-primary px-4 py-2 font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {loading ? 'Loading...' : 'Daftar'}
+        {loading ? 'Mendaftarkan...' : 'Daftar'}
       </button>
     </form>
   );

@@ -18,10 +18,19 @@ import LoginForm from '@components/auth/LoginForm';
 
       <p class="text-center text-sm text-muted-foreground">
         Belum punya akun?{' '}
-        <a href="/register" class="font-medium text-primary hover:underline">
+        <a href="/register" data-auth-switch="register" class="font-medium text-primary hover:underline">
           Daftar sekarang
         </a>
       </p>
     </div>
   </div>
+
+  <script is:inline>
+    const redirect = new URLSearchParams(window.location.search).get('redirect');
+    if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
+      document.querySelectorAll('[data-auth-switch="register"]').forEach((link) => {
+        link.setAttribute('href', `/register?redirect=${encodeURIComponent(redirect)}`);
+      });
+    }
+  </script>
 </Layout>

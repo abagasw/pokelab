@@ -10,17 +10,23 @@ import (
 	"time"
 )
 
-const exchangeRateIDRtoUSD = 16400.0 // From scraped data
+const defaultExchangeRate = 16400.0
 
 // PriceService handles price-related business logic
 type PriceService struct {
-	db        *sql.DB
-	aiService *AIService
+	db            *sql.DB
+	aiService     *AIService
+	exchangeRate  float64
 }
 
 // NewPriceService creates a new PriceService
 func NewPriceService(db *sql.DB, aiService *AIService) *PriceService {
-	return &PriceService{db: db, aiService: aiService}
+	return &PriceService{db: db, aiService: aiService, exchangeRate: defaultExchangeRate}
+}
+
+// NewPriceServiceWithRate creates a new PriceService with custom exchange rate
+func NewPriceServiceWithRate(db *sql.DB, aiService *AIService, exchangeRate float64) *PriceService {
+	return &PriceService{db: db, aiService: aiService, exchangeRate: exchangeRate}
 }
 
 // GetArbitrageOpportunities finds price arbitrage opportunities
@@ -39,7 +45,7 @@ func (s *PriceService) GetArbitrageOpportunities(ctx context.Context, req models
 			continue
 		}
 		
-		usdInIdr := card.USDPrice * exchangeRateIDRtoUSD
+		usdInIdr := card.USDPrice * s.exchangeRate
 		margin := (usdInIdr - float64(card.IDRPrice)) / usdInIdr
 		
 		if margin >= minMargin {
@@ -65,7 +71,7 @@ func (s *PriceService) GetArbitrageOpportunities(ctx context.Context, req models
 	return &models.ArbitrageResponse{
 		Opportunities: opportunities,
 		Total:         len(opportunities),
-		ExchangeRate:  exchangeRateIDRtoUSD,
+		ExchangeRate:  s.exchangeRate,
 		MinMargin:     minMargin,
 		GeneratedAt:   time.Now(),
 	}, nil
@@ -223,7 +229,7 @@ func (s *PriceService) GetMarketSummary(ctx context.Context) (*models.MarketSumm
 		TotalCards:        13439,
 		CardsWithIDRPrice: 679,
 		CardsWithUSDPrice: 395,
-		ExchangeRate:      exchangeRateIDRtoUSD,
+		ExchangeRate:      s.exchangeRate,
 		IDRAveragePrice:   185000,
 		USDAveragePrice:   12.50,
 		LastUpdated:       time.Now(),
@@ -262,7 +268,7 @@ func (s *PriceService) GetCollectionValue(ctx context.Context, items []struct {
 		TotalIDR:     totalIDR,
 		TotalUSD:     totalUSD,
 		Items:        resultItems,
-		ExchangeRate: exchangeRateIDRtoUSD,
+		ExchangeRate: s.exchangeRate,
 		CalculatedAt: time.Now(),
 	}, nil
 }

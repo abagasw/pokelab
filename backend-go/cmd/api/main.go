@@ -10,6 +10,7 @@ import (
 	"pokemon-tcg-indonesia/internal/handlers"
 	"pokemon-tcg-indonesia/internal/middleware"
 	"pokemon-tcg-indonesia/internal/services"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -73,8 +74,7 @@ func main() {
 	// Initialize JWT service
 	jwtSecret := cfg.JWTSecret
 	if jwtSecret == "" {
-		jwtSecret = "your-secret-key-change-in-production"
-		log.Println("WARNING: Using default JWT secret. Set JWT_SECRET in production!")
+		log.Fatal("FATAL: JWT_SECRET environment variable is required. Set it in .env or environment.")
 	}
 	jwtService := auth.NewJWTService(jwtSecret)
 
@@ -82,7 +82,7 @@ func main() {
 	aiService := services.NewAIServiceWithModel(cfg.OpenRouterAPIKey, cfg.OpenRouterModel)
 	cachedCardService := services.NewCachedCardService(db.DB, aiService, redis)
 	deckService := services.NewDeckService(db.DB, aiService)
-	priceService := services.NewPriceService(db.DB, aiService)
+	priceService := services.NewPriceServiceWithRate(db.DB, aiService, cfg.ExchangeRate)
 	collectionService := services.NewCollectionService(db.DB, priceService)
 	researchService := services.NewResearchService(db.DB, aiService)
 	authService := services.NewAuthService(db.DB, jwtService)
@@ -95,6 +95,7 @@ func main() {
 	aiHandler := handlers.NewAIHandler(cachedCardService.CardService)
 	authHandler := handlers.NewAuthHandler(authService)
 	researchHandler := handlers.NewResearchHandler(researchService)
+	mlHandler := handlers.NewMLHandler(cfg.MLServiceURL)
 
 	// Setup router
 	ginMode := os.Getenv("GIN_MODE")
@@ -106,10 +107,26 @@ func main() {
 	router := gin.Default()
 
 	// CORS middleware
+	allowedOrigins := cfg.AllowedOrigins
 	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if allowedOrigins != "" {
+			for _, o := range strings.Split(allowedOrigins, ",") {
+				if strings.TrimSpace(o) == origin {
+					c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+					break
+				}
+			}
+		} else if cfg.Environment == "development" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		} else {
+			if origin != "" {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			}
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -128,6 +145,7 @@ func main() {
 	authRateLimiter.StartCleanup(5 * time.Minute)
 
 	router.Use(middleware.RateLimitMiddleware(rateLimiter, middleware.DefaultRateLimitConfig()))
+	router.Use(middleware.InputSanitizationMiddleware())
 
 	// API v1 routes
 	v1 := router.Group("/api/v1")
@@ -197,14 +215,19 @@ func main() {
 
 		// PokeLab ID Research Lab (protected)
 		research := v1.Group("/research")
-		research.Use(middleware.JWTAuthMiddleware(jwtService))
 		{
-			research.GET("/recommendations", researchHandler.GetRecommendations)
-			research.GET("/deck-gap", researchHandler.GetDeckGap)
-			research.GET("/deck-analysis", researchHandler.GetDeckAnalysis)
 			research.POST("/anti-meta", researchHandler.GetAntiMeta)
 			research.GET("/predictions", researchHandler.GetPredictions)
+			research.GET("/meta-forecast", researchHandler.GetForecast)
 			research.POST("/advisor", researchHandler.AskAdvisor)
+
+			protectedResearch := research.Group("")
+			protectedResearch.Use(middleware.JWTAuthMiddleware(jwtService))
+			{
+				protectedResearch.GET("/recommendations", researchHandler.GetRecommendations)
+				protectedResearch.GET("/deck-gap", researchHandler.GetDeckGap)
+				protectedResearch.GET("/deck-analysis", researchHandler.GetDeckAnalysis)
+			}
 		}
 
 		// Auth (public) - with stricter rate limiting
@@ -259,6 +282,17 @@ func main() {
 			ai.POST("/ask", aiHandler.AskAI)
 			ai.POST("/explain-card", cardHandler.ExplainCard)
 			ai.POST("/suggest-decks", deckHandler.SuggestDecks)
+		}
+
+		// ML Service (proxied to Python backend)
+		ml := v1.Group("/ml")
+		{
+			ml.POST("/predict/prices", mlHandler.GetPricePredictions)
+			ml.GET("/detect/anomalies", mlHandler.GetAnomalyDetection)
+			ml.GET("/models/info", mlHandler.GetModelInfo)
+			ml.GET("/health", func(c *gin.Context) {
+				c.JSON(200, gin.H{"status": "ml_proxy", "service_url": cfg.MLServiceURL})
+			})
 		}
 	}
 

@@ -1,108 +1,15 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Heart, Plus, Minus, Package, ExternalLink, ShoppingCart, AlertCircle, BarChart3, Target, Trophy } from 'lucide-react';
-import type { Card, Collection, MetaPrediction, PriceComparison } from '../../types';
+import { Heart, Plus, Minus, Package, BarChart3, Target, Trophy, TrendingUp } from 'lucide-react';
+import type { Card, Collection, MetaPrediction } from '../../types';
 import type { CardDeckUsageContext } from './CardDetailPage';
 import { useCardStore } from '../../stores/cardStore';
 import { useCollectionStore } from '../../stores/collectionStore';
 import { useResearchStore } from '../../stores/researchStore';
+import { useAuthStore } from '../../stores/authStore';
 import { api } from '../../api/client';
 import Button from '../ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/Dialog';
-import { formatIDR, formatUSD } from '../../utils/formatters';
 import { cardImageSrc, setPlaceholderImage } from '../../utils/images';
-import PricePredictionWidget from '../prices/PricePredictionWidget';
-
-// Generate demo prices based on card rarity
-function getDemoPrices(card: Card): PriceComparison {
-  const name = encodeURIComponent(card.name_id);
-  const nameEn = encodeURIComponent(card.name_en || card.name_id);
-  
-  // Base price depends on rarity
-  let basePrice = 10000; // 10k IDR default
-  const rarity = card.rarity?.toLowerCase() || '';
-  if (rarity.includes('secret') || rarity.includes('hyper')) basePrice = 500000;
-  else if (rarity.includes('ultra') || rarity.includes('illustration')) basePrice = 150000;
-  else if (rarity.includes('double')) basePrice = 50000;
-  else if (rarity.includes('rare')) basePrice = 25000;
-  else if (rarity.includes('uncommon')) basePrice = 15000;
-  else basePrice = 10000;
-  
-  const prices = [
-    { 
-      source: 'Tokopedia', 
-      condition: 'NM', 
-      price_idr: basePrice + 5000, 
-      price_usd: Math.round((basePrice + 5000) / 15500 * 100) / 100, 
-      url: `https://www.tokopedia.com/search?q=${name}&source=universe&st=product`,
-      updated_at: new Date().toISOString()
-    },
-    { 
-      source: 'Tokopedia', 
-      condition: 'LP', 
-      price_idr: Math.round(basePrice * 0.8), 
-      price_usd: Math.round(basePrice * 0.8 / 15500 * 100) / 100, 
-      url: `https://www.tokopedia.com/search?q=${name}&source=universe&st=product`,
-      updated_at: new Date().toISOString()
-    },
-    { 
-      source: 'Shopee', 
-      condition: 'NM', 
-      price_idr: basePrice, 
-      price_usd: Math.round(basePrice / 15500 * 100) / 100, 
-      url: `https://shopee.co.id/search?keyword=${name}`,
-      updated_at: new Date().toISOString()
-    },
-    { 
-      source: 'Shopee', 
-      condition: 'MP', 
-      price_idr: Math.round(basePrice * 0.6), 
-      price_usd: Math.round(basePrice * 0.6 / 15500 * 100) / 100, 
-      url: `https://shopee.co.id/search?keyword=${name}`,
-      updated_at: new Date().toISOString()
-    },
-    { 
-      source: 'Bukalapak', 
-      condition: 'NM', 
-      price_idr: basePrice + 2000, 
-      price_usd: Math.round((basePrice + 2000) / 15500 * 100) / 100, 
-      url: `https://www.bukalapak.com/products?search%5Bkeywords%5D=${name}`,
-      updated_at: new Date().toISOString()
-    },
-    { 
-      source: 'TCGPlayer', 
-      condition: 'NM', 
-      price_idr: Math.round(basePrice * 1.2), 
-      price_usd: Math.round(basePrice / 15500 * 120) / 100, 
-      url: `https://www.tcgplayer.com/search?q=${nameEn}`,
-      updated_at: new Date().toISOString()
-    },
-    { 
-      source: 'Cardmarket', 
-      condition: 'NM', 
-      price_idr: Math.round(basePrice * 1.1), 
-      price_usd: Math.round(basePrice / 15500 * 110) / 100, 
-      url: `https://www.cardmarket.com/en/Pokemon/Products/Singles/${nameEn}`,
-      updated_at: new Date().toISOString()
-    },
-  ];
-  
-  // Find best deal (lowest NM price in IDR)
-  const nmPrices = prices.filter(p => p.condition === 'NM' && p.price_idr);
-  const bestDeal = nmPrices.length > 0 
-    ? nmPrices.reduce((min, p) => p.price_idr! < min.price_idr! ? p : min)
-    : prices[0];
-  
-  return {
-    card_id: card.id,
-    card_name: card.name_id,
-    prices,
-    best_deal: { 
-      source: bestDeal.source, 
-      price: bestDeal.price_idr || bestDeal.price_usd || 0, 
-      currency: bestDeal.price_idr ? 'IDR' : 'USD' 
-    }
-  };
-}
 
 interface CardDetailProps {
   card: Card;
@@ -112,24 +19,24 @@ interface CardDetailProps {
 export default function CardDetail({ card, deckUsage }: CardDetailProps) {
   const { selectedCard } = useCardStore();
   const { collections, fetchCollections, addToCollection } = useCollectionStore();
+  const { isAuthenticated } = useAuthStore();
   const { predictions, fetchPredictions, loading: researchLoading } = useResearchStore();
   const displayCard = card || selectedCard;
   const [quantity, setQuantity] = useState(1);
   const [selectedCollection, setSelectedCollection] = useState<string>('');
   const [addingToCollection, setAddingToCollection] = useState(false);
   const [showAddSuccess, setShowAddSuccess] = useState(false);
-  
-  // Price state
-  const [prices, setPrices] = useState<PriceComparison | null>(null);
-  const [loadingPrices, setLoadingPrices] = useState(false);
-  const [priceError, setPriceError] = useState<string | null>(null);
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
   const [loadingAiExplanation, setLoadingAiExplanation] = useState(false);
   const [aiExplanationError, setAiExplanationError] = useState<string | null>(null);
 
+  const safeCollections = Array.isArray(collections) ? collections : [];
+
   useEffect(() => {
-    fetchCollections();
-  }, [fetchCollections]);
+    if (isAuthenticated) {
+      fetchCollections();
+    }
+  }, [fetchCollections, isAuthenticated]);
 
   useEffect(() => {
     if (displayCard?.category) {
@@ -163,32 +70,6 @@ export default function CardDetail({ card, deckUsage }: CardDetailProps) {
     fetchAiExplanation();
   }, [displayCard?.id]);
 
-  // Fetch prices when card changes
-  useEffect(() => {
-    const fetchPrices = async () => {
-      if (!displayCard?.id) return;
-      
-      setLoadingPrices(true);
-      setPriceError(null);
-      try {
-        const response = await api.comparePrices(displayCard.id);
-        if (response.success && response.data) {
-          setPrices(response.data);
-        } else {
-          // Use demo data if API fails
-          setPrices(getDemoPrices(displayCard));
-        }
-      } catch (err) {
-        // Use demo data on error
-        setPrices(getDemoPrices(displayCard));
-      } finally {
-        setLoadingPrices(false);
-      }
-    };
-    
-    fetchPrices();
-  }, [card?.id, selectedCard?.id]);
-
   if (!displayCard) return null;
 
   const cardPrediction = predictions.find((prediction) =>
@@ -197,6 +78,9 @@ export default function CardDetail({ card, deckUsage }: CardDetailProps) {
     normalizeCardName(prediction.card_name) === normalizeCardName(displayCard.name_en || '')
   ) || null;
   const metaInsight = buildMetaInsight(displayCard, deckUsage, cardPrediction);
+  const loginHref = typeof window !== 'undefined'
+    ? `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`
+    : '/login?redirect=/cards';
 
   const handleAddToCollection = async () => {
     if (!selectedCollection) return;
@@ -213,15 +97,6 @@ export default function CardDetail({ card, deckUsage }: CardDetailProps) {
       setAddingToCollection(false);
     }
   };
-
-  // Get unique sources from prices
-  const priceSources = prices?.prices?.reduce((acc, price) => {
-    if (!acc[price.source]) {
-      acc[price.source] = [];
-    }
-    acc[price.source].push(price);
-    return acc;
-  }, {} as Record<string, typeof prices.prices>) || {};
 
   return (
     <div className="space-y-8">
@@ -322,74 +197,77 @@ export default function CardDetail({ card, deckUsage }: CardDetailProps) {
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
             {/* Add to Collection */}
-            <Dialog>
-              <DialogTrigger asChild>
+            {isAuthenticated ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <Package className="h-4 w-4 mr-2" />
+                    Tambah ke Koleksi
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Tambah ke Koleksi</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Pilih Koleksi</label>
+                      <select
+                        value={selectedCollection}
+                        onChange={(e) => setSelectedCollection(e.target.value)}
+                        className="w-full h-10 px-3 rounded-md border"
+                      >
+                        <option value="">Pilih koleksi...</option>
+                        {safeCollections.map((collection) => (
+                          <option key={collection.id} value={collection.id}>
+                            {collection.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Jumlah</label>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <span className="w-12 text-center font-medium">{quantity}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setQuantity(quantity + 1)}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleAddToCollection}
+                      disabled={!selectedCollection || addingToCollection}
+                      className="w-full"
+                    >
+                      {addingToCollection ? 'Menambahkan...' : 'Tambahkan'}
+                    </Button>
+                    {showAddSuccess && (
+                      <p className="text-green-600 text-sm text-center">
+                        Berhasil ditambahkan ke koleksi!
+                      </p>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+            ) : (
+              <a href={loginHref}>
                 <Button variant="outline">
                   <Package className="h-4 w-4 mr-2" />
-                  Tambah ke Koleksi
+                  Login untuk Koleksi
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Tambah ke Koleksi</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Pilih Koleksi</label>
-                    <select
-                      value={selectedCollection}
-                      onChange={(e) => setSelectedCollection(e.target.value)}
-                      className="w-full h-10 px-3 rounded-md border"
-                    >
-                      <option value="">Pilih koleksi...</option>
-                      {collections.map((collection) => (
-                        <option key={collection.id} value={collection.id}>
-                          {collection.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">Jumlah</label>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <span className="w-12 text-center font-medium">{quantity}</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setQuantity(quantity + 1)}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handleAddToCollection}
-                    disabled={!selectedCollection || addingToCollection}
-                    className="w-full"
-                  >
-                    {addingToCollection ? 'Menambahkan...' : 'Tambahkan'}
-                  </Button>
-                  {showAddSuccess && (
-                    <p className="text-green-600 text-sm text-center">
-                      Berhasil ditambahkan ke koleksi!
-                    </p>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            {/* Track Price */}
-            <Button variant="outline">
-              <TrendingUp className="h-4 w-4 mr-2" />
-              Pantau Harga
-            </Button>
+              </a>
+            )}
 
             {/* Add to Wishlist */}
             <Button variant="outline">
@@ -410,135 +288,6 @@ export default function CardDetail({ card, deckUsage }: CardDetailProps) {
         aiError={aiExplanationError}
       />
 
-      {/* Price Comparison Section */}
-      <div className="border-t pt-8">
-        <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <ShoppingCart className="h-6 w-6" />
-          Perbandingan Harga
-        </h2>
-
-        {loadingPrices && (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <span className="ml-3 text-muted-foreground">Memuat harga...</span>
-          </div>
-        )}
-
-        {priceError && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
-            <div>
-              <p className="font-medium text-amber-800">Harga tidak tersedia</p>
-              <p className="text-sm text-amber-700">{priceError}</p>
-            </div>
-          </div>
-        )}
-
-        {!loadingPrices && !priceError && prices?.prices && prices.prices.length > 0 && (
-          <div className="space-y-6">
-            {/* Best Deal */}
-            {prices.best_deal && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <p className="text-sm font-medium text-green-800 mb-1">Deal Terbaik</p>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-2xl font-bold text-green-700">
-                      {prices.best_deal.currency === 'IDR' 
-                        ? formatIDR(prices.best_deal.price)
-                        : formatUSD(prices.best_deal.price)
-                      }
-                    </p>
-                    <p className="text-sm text-green-600">di {prices.best_deal.source}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Price Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-semibold">Sumber</th>
-                    <th className="text-left py-3 px-4 font-semibold">Kondisi</th>
-                    <th className="text-right py-3 px-4 font-semibold">Harga IDR</th>
-                    <th className="text-right py-3 px-4 font-semibold">Harga USD</th>
-                    <th className="text-center py-3 px-4 font-semibold">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {prices.prices.map((price, index) => (
-                    <tr key={index} className="border-b hover:bg-muted/50">
-                      <td className="py-3 px-4">
-                        <span className="font-medium">{price.source}</span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-block px-2 py-1 bg-secondary rounded text-xs">
-                          {price.condition}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {price.price_idr ? (
-                          <span className="font-medium">{formatIDR(price.price_idr)}</span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {price.price_usd ? (
-                          <span className="font-medium">{formatUSD(price.price_usd)}</span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {price.url ? (
-                          <a
-                            href={price.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-primary hover:underline"
-                          >
-                            Beli
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Last Updated */}
-            {prices.prices[0]?.updated_at && (
-              <p className="text-xs text-muted-foreground text-right">
-                Terakhir diupdate: {new Date(prices.prices[0].updated_at).toLocaleString('id-ID')}
-              </p>
-            )}
-
-            {/* AI Prediction Section */}
-            <div className="mt-12 pt-8 border-t border-dashed">
-              <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                <TrendingUp className="h-6 w-6 text-primary" />
-                AI Market Forecast
-              </h2>
-              <div className="max-w-2xl">
-                <PricePredictionWidget cardId={displayCard.id} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!loadingPrices && !priceError && (!prices?.prices || prices.prices.length === 0) && (
-          <div className="text-center py-12 bg-muted rounded-lg">
-            <ShoppingCart className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Belum ada data harga untuk kartu ini</p>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

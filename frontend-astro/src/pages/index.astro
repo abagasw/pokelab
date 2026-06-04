@@ -14,17 +14,17 @@ import {
 } from 'lucide-react';
 
 const heroCards = [
-  { src: '/card-images/AC3a/1.webp', name: 'Meta lead', className: 'left-3 top-10 -rotate-12 sm:left-10 sm:top-14' },
-  { src: '/card-images/AC3a/25.webp', name: 'Tech card', className: 'right-4 top-10 rotate-12 sm:right-12 sm:top-14' },
-  { src: '/card-images/AC3a/67.webp', name: 'Trainer engine', className: 'bottom-12 left-8 rotate-6 sm:left-20' },
-  { src: '/card-images/AC3a/138.webp', name: 'Energy slot', className: 'bottom-14 right-8 -rotate-6 sm:right-24' },
+  { src: '/landing-cards/meta-lead.webp', name: 'Meta lead', className: 'left-3 top-10 -rotate-12 sm:left-10 sm:top-14' },
+  { src: '/landing-cards/tech-card.webp', name: 'Tech card', className: 'right-4 top-10 rotate-12 sm:right-12 sm:top-14' },
+  { src: '/landing-cards/trainer-engine.webp', name: 'Trainer engine', className: 'bottom-12 left-8 rotate-6 sm:left-20' },
+  { src: '/landing-cards/energy-slot.webp', name: 'Energy slot', className: 'bottom-14 right-8 -rotate-6 sm:right-24' },
 ];
 
 const countdownStats = [
   { label: 'Cards', value: '13K+' },
   { label: 'Sets', value: '91' },
   { label: 'Decks', value: '46' },
-  { label: 'Prices', value: '593' },
+  { label: 'AI', value: 'ON' },
 ];
 
 const spotlight = [
@@ -33,7 +33,7 @@ const spotlight = [
     description: 'Analisa tiap deck seperti report kompetitif: owner, turnamen, rank, card usage, gap inventory, upgrade plan, dan matchup theory.',
     href: '/decks',
     icon: Layers3,
-    image: '/card-images/AC3a/10.webp',
+    image: '/landing-cards/deck-scout.webp',
     meta: 'Deck library',
   },
   {
@@ -41,15 +41,15 @@ const spotlight = [
     description: 'Masukkan koleksi, lalu PokeLab menghitung deck meta yang paling dekat, missing card, biaya upgrade, dan prioritas beli.',
     href: '/lab',
     icon: FlaskConical,
-    image: '/card-images/AC3a/101.webp',
+    image: '/landing-cards/inventory-lab.webp',
     meta: 'PokeLab ID',
   },
   {
     title: 'Meta Prediction Board',
-    description: 'Pantau Pokemon, Trainer, Supporter, Stadium, dan Energy yang mulai naik sinyal dari decklist dan price radar.',
+    description: 'Pantau Pokemon, Trainer, Supporter, Stadium, dan Energy yang mulai naik sinyal dari decklist dan hasil turnamen.',
     href: '/lab/predictions',
     icon: TrendingUp,
-    image: '/card-images/AC3a/150.webp',
+    image: '/landing-cards/prediction-board.webp',
     meta: 'Trend watch',
   },
   {
@@ -57,7 +57,7 @@ const spotlight = [
     description: 'Cari kartu berdasarkan expansion, rarity, type, role, dan kebutuhan deck. Detail kartu diarahkan untuk keputusan deck building.',
     href: '/cards',
     icon: Search,
-    image: '/card-images/AC3a/33.webp',
+    image: '/landing-cards/card-database.webp',
     meta: 'Card index',
   },
 ];
@@ -66,12 +66,11 @@ const modules = [
   { label: 'Recommendations', href: '/lab/recommendations', detail: 'Ranking deck meta dari collection aktif' },
   { label: 'Anti-Meta', href: '/lab/anti-meta', detail: 'Counter plan untuk archetype target' },
   { label: 'Collections', href: '/collections', detail: 'Inventory user untuk scoring backend' },
-  { label: 'Prices', href: '/prices', detail: 'Harga IDR untuk upgrade priority' },
 ];
 
 const testimonials = [
   ['Deck Builder', 'Akhirnya tahu deck mana yang bisa jadi duluan dari kartu yang sudah saya punya.'],
-  ['Collector', 'Filter kartu dan price radar jadi lebih gampang dipakai untuk cek kebutuhan beli.'],
+  ['Collector', 'Filter kartu dan inventory scoring jadi lebih gampang dipakai untuk cek kebutuhan deck.'],
   ['Competitive Player', 'Scout report deck membantu lihat role kartu, bukan cuma daftar 60 kartu.'],
   ['Research Lab', 'AI menjelaskan hasil scoring tanpa mengubah ranking deterministik backend.'],
 ];
@@ -95,14 +94,9 @@ const testimonials = [
         ))}
 
         <div class="relative z-10 flex min-h-[620px] flex-col items-center justify-center px-5 py-12 text-center">
-          <div class="mb-5 inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-xs font-semibold uppercase text-red-200">
-            <Sparkles className="h-4 w-4" />
-            Pokemon TCG Indonesia Competitive Research
-          </div>
 
           <h1 class="max-w-4xl text-5xl font-black leading-none text-white md:text-7xl lg:text-8xl">
             Poke<span class="text-red-500">Lab</span>
-            <span class="block text-yellow-300">ID</span>
           </h1>
           <p class="mt-5 max-w-2xl text-sm leading-relaxed text-zinc-300 md:text-base">
             Research lab untuk rekomendasi deck meta, analisa kartu, anti-meta plan, prediksi trend, dan upgrade path berdasarkan inventory user.
@@ -133,7 +127,7 @@ const testimonials = [
 
   <section class="border-b border-white/10 bg-[#111111]">
     <div class="container px-6 py-10 md:px-8">
-      <div class="grid gap-4 md:grid-cols-4">
+      <div class="grid gap-4 md:grid-cols-3">
         {modules.map((module) => (
           <a href={module.href} class="group rounded-lg border border-white/10 bg-[#191919] p-4 transition-colors hover:border-red-400/60 hover:bg-[#202020]">
             <div class="flex items-center justify-between gap-3">
@@ -197,7 +191,7 @@ const testimonials = [
         {[
           ['Inventory readiness', 'Completeness, owned count, missing count, dan estimated upgrade cost.', Package],
           ['Anti-meta plan', 'Counter deck, tech card, gangguan utama, dan matchup notes.', ShieldCheck],
-          ['Price radar', 'Harga IDR untuk buylist dan budget priority.', BarChart3],
+          ['Upgrade priority', 'Missing card, substitute, dan budget priority tetap dihitung di backend.', BarChart3],
           ['AI coach', 'Penjelasan Bahasa Indonesia tanpa mengambil alih ranking.', Users],
         ].map(([title, body, Icon]) => (
           <div class="rounded-lg border border-white/10 bg-[#1d1d1d] p-4">

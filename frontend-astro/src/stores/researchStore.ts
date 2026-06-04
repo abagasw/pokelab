@@ -5,6 +5,7 @@ import type {
   AntiMetaRecommendation,
   DeckGapAnalysis,
   MetaPrediction,
+  ResearchForecastResponse,
   ResearchDeckAnalysis,
   ResearchDeckRecommendation,
 } from '@/types/index';
@@ -15,6 +16,7 @@ interface ResearchState {
   selectedAnalysis: ResearchDeckAnalysis | null;
   antiMeta: AntiMetaRecommendation[];
   predictions: MetaPrediction[];
+  forecast: ResearchForecastResponse | null;
   advisor: AIResearchAdvice | null;
   loading: boolean;
   error: string | null;
@@ -23,6 +25,7 @@ interface ResearchState {
   fetchDeckAnalysis: (collectionId: string, deckId: string) => Promise<void>;
   fetchAntiMeta: (targetDeckId: string) => Promise<void>;
   fetchPredictions: (category?: string) => Promise<void>;
+  fetchForecast: (category?: string, limit?: number) => Promise<void>;
   askAdvisor: (question: string, context?: string) => Promise<void>;
   clearError: () => void;
 }
@@ -33,6 +36,7 @@ export const useResearchStore = create<ResearchState>((set) => ({
   selectedAnalysis: null,
   antiMeta: [],
   predictions: [],
+  forecast: null,
   advisor: null,
   loading: false,
   error: null,
@@ -112,6 +116,22 @@ export const useResearchStore = create<ResearchState>((set) => ({
       }
     } catch (err: any) {
       set({ error: err.message || 'Gagal memuat prediksi meta' });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  fetchForecast: async (category, limit = 500) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.getResearchForecast({ category, limit });
+      if (response.success && response.data) {
+        set({ forecast: response.data, predictions: response.data.card_predictions || [] });
+      } else {
+        set({ error: response.error || 'Gagal memuat meta forecast' });
+      }
+    } catch (err: any) {
+      set({ error: err.message || 'Gagal memuat meta forecast' });
     } finally {
       set({ loading: false });
     }

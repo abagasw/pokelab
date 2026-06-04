@@ -95,8 +95,13 @@ func (h *CollectionHandler) GetCollection(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID required"})
 		return
 	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
 
-	collection, err := h.collectionService.GetCollection(c.Request.Context(), collectionID)
+	collection, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
 		return
@@ -122,6 +127,15 @@ func (h *CollectionHandler) UpdateCollection(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID required"})
 		return
 	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if _, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
+		return
+	}
 
 	var req struct {
 		Name string `json:"name" binding:"required,min=1,max=100"`
@@ -137,7 +151,7 @@ func (h *CollectionHandler) UpdateCollection(c *gin.Context) {
 	}
 
 	// Return updated collection
-	collection, err := h.collectionService.GetCollection(c.Request.Context(), collectionID)
+	collection, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -160,6 +174,15 @@ func (h *CollectionHandler) DeleteCollection(c *gin.Context) {
 	collectionID := c.Param("id")
 	if collectionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID required"})
+		return
+	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if _, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
 		return
 	}
 
@@ -186,6 +209,15 @@ func (h *CollectionHandler) AddToCollection(c *gin.Context) {
 	collectionID := c.Param("id")
 	if collectionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID required"})
+		return
+	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if _, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
 		return
 	}
 
@@ -240,6 +272,15 @@ func (h *CollectionHandler) RemoveFromCollection(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID and item ID required"})
 		return
 	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if _, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
+		return
+	}
 
 	if err := h.collectionService.RemoveFromCollection(c.Request.Context(), collectionID, itemID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -262,9 +303,19 @@ func (h *CollectionHandler) RemoveFromCollection(c *gin.Context) {
 // @Success 200 {object} models.CollectionItem
 // @Router /collections/{id}/items/{itemId} [put]
 func (h *CollectionHandler) UpdateCollectionItem(c *gin.Context) {
+	collectionID := c.Param("id")
 	itemID := c.Param("itemId")
-	if itemID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "item ID required"})
+	if collectionID == "" || itemID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID and item ID required"})
+		return
+	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if _, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
 		return
 	}
 
@@ -274,7 +325,7 @@ func (h *CollectionHandler) UpdateCollectionItem(c *gin.Context) {
 		return
 	}
 
-	if err := h.collectionService.UpdateCollectionItem(c.Request.Context(), itemID, req); err != nil {
+	if err := h.collectionService.UpdateCollectionItem(c.Request.Context(), collectionID, itemID, req); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -296,6 +347,15 @@ func (h *CollectionHandler) GetCollectionSummary(c *gin.Context) {
 	collectionID := c.Param("id")
 	if collectionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID required"})
+		return
+	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if _, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
 		return
 	}
 
@@ -322,6 +382,15 @@ func (h *CollectionHandler) GetPortfolioInsight(c *gin.Context) {
 	collectionID := c.Param("id")
 	if collectionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID required"})
+		return
+	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if _, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
 		return
 	}
 

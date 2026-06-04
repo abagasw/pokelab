@@ -60,7 +60,7 @@ export const useCollectionStore = create<CollectionState>()(
       },
 
       fetchCollection: async (id: string) => {
-        set({ loading: true, error: null });
+        set({ loading: true, error: null, currentCollection: null });
         try {
           const response = await api.getCollection(id);
           if (response.success && response.data) {
@@ -127,7 +127,7 @@ export const useCollectionStore = create<CollectionState>()(
         set({ loading: true, error: null });
         try {
           const response = await api.deleteCollection(id);
-          if (response.success && response.data) {
+          if (response.success) {
             await get().fetchCollections();
             set({ loading: false });
             return true;
@@ -163,7 +163,7 @@ export const useCollectionStore = create<CollectionState>()(
         set({ loading: true, error: null });
         try {
           const response = await api.removeFromCollection(collectionId, itemId);
-          if (response.success && response.data) {
+          if (response.success) {
             await get().fetchCollection(collectionId);
             set({ loading: false });
             return true;
@@ -217,7 +217,7 @@ export const useCollectionStore = create<CollectionState>()(
         set({ loading: true, error: null });
         try {
           const response = await api.deleteAlert(id);
-          if (response.success && response.data) {
+          if (response.success) {
             await get().fetchPriceAlerts();
             set({ loading: false });
             return true;

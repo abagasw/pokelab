@@ -1,19 +1,26 @@
+# OS
 .DS_Store
 Thumbs.db
 
-# VS Code / IDE
+# IDE
 .vscode/
 .idea/
 *.code-workspace
 
+# =============================================================================
 # Python
+# =============================================================================
 .venv/
 venv/
 __pycache__/
+**/__pycache__/
 *.py[cod]
+*.pyo
 .pytest_cache/
 
-# Node
+# =============================================================================
+# Node / Frontend
+# =============================================================================
 node_modules/
 **/node_modules/
 dist/
@@ -24,7 +31,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# =============================================================================
 # Go
+# =============================================================================
 *.exe
 *.dll
 *.so
@@ -33,40 +42,64 @@ backend-go/bin/
 vendor/
 coverage.out
 
-# Env files
+# =============================================================================
+# Environment & Secrets
+# =============================================================================
 .env
+.env.deploy
 .env.local
 .env.*.local
 .envrc
+*.key
+*.pem
 
+# =============================================================================
+# Database (auto-synced from server, not committed)
+# =============================================================================
+pokemon_tcg.db
+
+# =============================================================================
+# Card Images (auto-downloaded by sync service, too large for git)
+# =============================================================================
+frontend-astro/public/card-images/
+
+# =============================================================================
+# Data directories (scraped data, not committed)
+# =============================================================================
+data/
+
+# =============================================================================
 # Logs
+# =============================================================================
 logs/
 *.log
 
-# Temporary files
+# =============================================================================
+# ML Artifacts
+# =============================================================================
+backend-ml/models/saved/*.pkl
+backend-ml/models/saved/*.pt
+backend-ml/mlflow.db
+backend-ml/__pycache__/
+backend-ml/**/__pycache__/
+backend-ml/**/**/__pycache__/
+backend-ml/.pytest_cache/
+backend-ml/data/raw/
+backend-ml/data/processed/
+backend-ml/data/features/
+*.egg-info/
+
+# =============================================================================
+# Dev tools & temp files
+# =============================================================================
+.tools/
 .cache/
 tmp/
 temp/
 *.swp
 *.swo
-
-# Secrets
-*.key
-*.pem
-
-# Package artifacts
 *.tgz
-*.lock
-
-# Local data directory (not tracked)
-data/
-
-# Dev tools and temporary files
-.tools/
 session-*.zip
-pokemon_tcg.db
+main.exe
 preview.html
 docs/
-
-# Card images (too large for git)
-frontend-astro/public/card-images/

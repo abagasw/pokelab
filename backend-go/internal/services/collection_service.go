@@ -116,6 +116,18 @@ func (s *CollectionService) GetCollection(ctx context.Context, collectionID stri
 	return &c, nil
 }
 
+// GetCollectionForUser gets a collection only when it belongs to the user.
+func (s *CollectionService) GetCollectionForUser(ctx context.Context, collectionID string, userID string) (*models.Collection, error) {
+	collection, err := s.GetCollection(ctx, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	if collection.UserID != userID {
+		return nil, fmt.Errorf("collection not found")
+	}
+	return collection, nil
+}
+
 // UpdateCollection updates collection name
 func (s *CollectionService) UpdateCollection(ctx context.Context, collectionID string, name string) error {
 	_, err := s.db.ExecContext(ctx, `
@@ -210,14 +222,14 @@ func (s *CollectionService) RemoveFromCollection(ctx context.Context, collection
 }
 
 // UpdateCollectionItem updates collection item details
-func (s *CollectionService) UpdateCollectionItem(ctx context.Context, itemID string, req models.CollectionRequest) error {
+func (s *CollectionService) UpdateCollectionItem(ctx context.Context, collectionID string, itemID string, req models.CollectionRequest) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE collection_items
 		SET quantity = ?, condition = ?, purchase_price = ?,
 		    purchase_currency = ?, notes = ?, updated_at = ?
-		WHERE id = ?
+		WHERE id = ? AND collection_id = ?
 	`, req.Quantity, req.Condition, req.PurchasePrice,
-		req.PurchaseCurrency, req.Notes, time.Now(), itemID)
+		req.PurchaseCurrency, req.Notes, time.Now(), itemID, collectionID)
 
 	if err != nil {
 		return fmt.Errorf("failed to update collection item: %w", err)

@@ -1,7 +1,7 @@
 import type { Deck } from '../../types';
 import Loading from '@components/ui/Loading';
 import EmptyState from '@components/ui/EmptyState';
-import { Calendar, ChevronRight, CircleDollarSign, Layers3, Shield, Trophy, Zap } from 'lucide-react';
+import { Calendar, ChevronRight, Layers3, Shield, Trophy, Zap } from 'lucide-react';
 
 interface DeckListProps {
   decks: Deck[];
@@ -85,11 +85,10 @@ export default function DeckList({
 
               {deck.description && <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">{deck.description}</p>}
 
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
                 <DeckMetric icon={Trophy} label="Events" value={`${deck.tournament_count || 0}`} />
                 <DeckMetric icon={Zap} label="Win" value={winRate !== null ? `${winRate}%` : '-'} />
                 <DeckMetric icon={Layers3} label="Top 8" value={`${deck.top8_count || 0}`} />
-                <DeckMetric icon={CircleDollarSign} label="Cost" value={deck.total_price_idr ? `Rp ${compactIDR(deck.total_price_idr)}` : '-'} />
               </div>
 
               <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
@@ -118,12 +117,6 @@ function tierLabel(deck: Deck) {
   if (score >= 40) return 'A';
   if (score >= 12) return 'B';
   return 'C';
-}
-
-function compactIDR(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}jt`;
-  if (value >= 1_000) return `${Math.round(value / 1_000)}rb`;
-  return value.toLocaleString('id-ID');
 }
 
 function DeckMetric({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {

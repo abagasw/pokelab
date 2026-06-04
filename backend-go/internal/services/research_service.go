@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"fmt"
 	"math"
 	"pokemon-tcg-indonesia/internal/models"
 	"sort"
@@ -182,9 +182,11 @@ func (s *ResearchService) GetAntiMeta(ctx context.Context, targetDeckID string) 
 
 // GetPredictions returns cards with the strongest current meta signals.
 func (s *ResearchService) GetPredictions(ctx context.Context, category string, limit int) ([]models.MetaPrediction, error) {
-	if limit <= 0 || limit > 50 {
-		limit = 20
+	if limit <= 0 {
+		limit = 500
 	}
+
+	totalDecklists := s.countDecklistsWithCards(ctx)
 
 	query := `
 		SELECT c.id, c.name_id, c.category, COALESCE(c.card_type, ''), COALESCE(c.rarity, ''),
@@ -198,7 +200,7 @@ func (s *ResearchService) GetPredictions(ctx context.Context, category string, l
 	`
 
 	rows, err := s.db.QueryContext(ctx, query, category, category, category, limit)
-	if err != nil {
+	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
@@ -209,16 +211,7 @@ func (s *ResearchService) GetPredictions(ctx context.Context, category string, l
 		if err := rows.Scan(&p.CardID, &p.CardName, &p.Category, &p.CardType, &p.Rarity, &p.Appearances, &p.TotalCopies); err != nil {
 			continue
 		}
-		p.PredictionScore = round(math.Min(100, float64(p.Appearances)*8+float64(p.TotalCopies)*1.5))
-		p.Trend = trendLabel(p.PredictionScore)
-		p.Factors = []string{
-			fmt.Sprintf("Muncul di %d decklist", p.Appearances),
-			fmt.Sprintf("Total %d copy tercatat", p.TotalCopies),
-		}
-		if p.Rarity != "" {
-			p.Factors = append(p.Factors, "Rarity: "+p.Rarity)
-		}
-		p.Reason = fmt.Sprintf("%s punya sinyal meta %s karena frekuensi penggunaan turnamen tinggi.", p.CardName, p.Trend)
+		p = s.enrichCardPrediction(p, totalDecklists)
 		predictions = append(predictions, p)
 	}
 
@@ -227,6 +220,292 @@ func (s *ResearchService) GetPredictions(ctx context.Context, category string, l
 	}
 
 	return predictions, nil
+}
+
+// GetForecast returns public model-style meta forecasts for the research lab.
+func (s *ResearchService) GetForecast(ctx context.Context, category string, limit int) (*models.ResearchForecastResponse, error) {
+	if limit <= 0 {
+		limit = 500
+	}
+
+	cardPredictions, err := s.GetPredictions(ctx, category, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	deckPredictions, stats, err := s.forecastDecks(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	stats.TotalCardSignals = len(cardPredictions)
+
+	return &models.ResearchForecastResponse{
+		DeckPredictions: deckPredictions,
+		CardPredictions: cardPredictions,
+		LabStats:        stats,
+		Methodology: []string{
+			"Card model: frequency, total copies, average copies, adoption velocity, staple index, rarity/context risk.",
+			"Deck model: archetype clustering from tournament decks, tournament count, win/top-cut signals, momentum, and meta-share estimate.",
+			"OpenRouter is explain-only. Ranking, confidence, and tiers are deterministic from local database signals.",
+			"Scores are scouting signals, not guarantees. Validate with matchup testing and new tournament imports.",
+		},
+	}, nil
+}
+
+func (s *ResearchService) enrichCardPrediction(p models.MetaPrediction, totalDecklists int) models.MetaPrediction {
+	if totalDecklists <= 0 {
+		totalDecklists = p.Appearances
+	}
+	avgCopies := 0.0
+	if p.Appearances > 0 {
+		avgCopies = float64(p.TotalCopies) / float64(p.Appearances)
+	}
+	metaShare := 0.0
+	if totalDecklists > 0 {
+		metaShare = float64(p.Appearances) / float64(totalDecklists) * 100
+	}
+	adoptionVelocity := math.Min(100, metaShare*0.9+math.Log1p(float64(p.Appearances))*8+avgCopies*4)
+	stapleIndex := math.Min(100, metaShare*0.65+math.Min(avgCopies, 4)*12+math.Log1p(float64(p.Appearances))*3)
+	volatility := math.Max(5, 100-stapleIndex+(avgCopies-2.2)*8)
+	if volatility > 100 {
+		volatility = 100
+	}
+	copyPressure := math.Min(100, math.Log1p(float64(p.TotalCopies))*12)
+	rawScore := metaShare*0.36 + adoptionVelocity*0.25 + stapleIndex*0.25 + copyPressure*0.14
+	p.PredictionScore = round(math.Min(100, rawScore))
+	p.ConfidencePct = round(math.Min(96, 38+math.Sqrt(float64(maxInt(1, p.Appearances)))*4.8+math.Min(18, metaShare*0.25)))
+	p.MetaSharePct = round(metaShare)
+	p.AverageCopies = round(avgCopies)
+	p.AdoptionVelocity = round(adoptionVelocity)
+	p.StapleIndex = round(stapleIndex)
+	p.VolatilityScore = round(volatility)
+	p.Trend = trendLabel(p.PredictionScore)
+	p.ForecastLabel = forecastLabel(p)
+	p.RecommendedAction = recommendedCardAction(p)
+	p.Factors = []string{
+		fmt.Sprintf("Muncul di %d decklist", p.Appearances),
+		fmt.Sprintf("Total %d copy tercatat", p.TotalCopies),
+		fmt.Sprintf("Meta share %.1f%% dari decklist tersimpan", p.MetaSharePct),
+		fmt.Sprintf("Rata-rata %.1f copy saat dimainkan", p.AverageCopies),
+	}
+	p.ModelSignals = []string{
+		fmt.Sprintf("Adoption velocity %.1f/100", p.AdoptionVelocity),
+		fmt.Sprintf("Staple index %.1f/100", p.StapleIndex),
+		fmt.Sprintf("Volatility %.1f/100", p.VolatilityScore),
+		fmt.Sprintf("Confidence %.1f%%", p.ConfidencePct),
+	}
+	if p.Rarity != "" {
+		p.Factors = append(p.Factors, "Rarity: "+p.Rarity)
+	}
+	p.RiskFactors = cardRiskFactors(p)
+	p.Reason = fmt.Sprintf("%s diproyeksikan %s: score %.1f dengan meta share %.1f%%, adoption %.1f, dan rata-rata %.1f copy.",
+		p.CardName, strings.ToLower(p.ForecastLabel), p.PredictionScore, p.MetaSharePct, p.AdoptionVelocity, p.AverageCopies)
+	return p
+}
+
+func (s *ResearchService) forecastDecks(ctx context.Context, limit int) ([]models.MetaDeckPrediction, models.ResearchLabStats, error) {
+	decks, err := s.loadMetaDecks(ctx, 500)
+	if err != nil {
+		return nil, models.ResearchLabStats{}, err
+	}
+
+	type archetypeAgg struct {
+		archetype string
+		decks     []models.Deck
+		tourneys  int
+		wins      int
+		top8      int
+	}
+	groups := map[string]*archetypeAgg{}
+	totalTournamentSignals := 0
+	for _, deck := range decks {
+		key := strings.TrimSpace(deck.Archetype)
+		if key == "" {
+			key = strings.TrimSpace(deck.Name)
+		}
+		if key == "" {
+			key = "Unknown"
+		}
+		group := groups[key]
+		if group == nil {
+			group = &archetypeAgg{archetype: key}
+			groups[key] = group
+		}
+		group.decks = append(group.decks, deck)
+		group.tourneys += deck.TournamentCount
+		group.wins += deck.WinCount
+		group.top8 += deck.Top8Count
+		totalTournamentSignals += deck.TournamentCount
+	}
+
+	predictions := make([]models.MetaDeckPrediction, 0, len(groups))
+	for _, group := range groups {
+		sort.SliceStable(group.decks, func(i, j int) bool {
+			if s.metaScore(group.decks[i]) != s.metaScore(group.decks[j]) {
+				return s.metaScore(group.decks[i]) > s.metaScore(group.decks[j])
+			}
+			return group.decks[i].Name < group.decks[j].Name
+		})
+		rep := group.decks[0]
+		metaShare := 0.0
+		if totalTournamentSignals > 0 {
+			metaShare = float64(group.tourneys) / float64(totalTournamentSignals) * 100
+		}
+		momentum := math.Min(100, float64(group.top8)*18+float64(group.wins)*6+math.Sqrt(float64(len(group.decks)))*7+math.Sqrt(float64(group.tourneys))*5+metaShare*0.7)
+		tournamentDepth := math.Min(100, math.Log1p(float64(group.tourneys))*9)
+		score := math.Min(100, momentum*0.42+metaShare*0.85+tournamentDepth+float64(group.top8)*4+float64(group.wins)*2)
+		confidence := math.Min(96, 42+math.Sqrt(float64(maxInt(1, group.tourneys)))*8+float64(len(group.decks))*2+float64(group.top8)*3)
+		p := models.MetaDeckPrediction{
+			Archetype:              group.archetype,
+			RepresentativeDeckID:   rep.ID,
+			RepresentativeDeckName: rep.Name,
+			PredictedTier:          tierFromScore(score),
+			PredictionScore:        round(score),
+			ConfidencePct:          round(confidence),
+			MomentumScore:          round(momentum),
+			MetaSharePct:           round(metaShare),
+			DeckCount:              len(group.decks),
+			TournamentCount:        group.tourneys,
+			WinCount:               group.wins,
+			Top8Count:              group.top8,
+			GrowthSignal:           deckGrowthSignal(score, momentum, metaShare),
+			ExpectedRole:           deckExpectedRole(score, metaShare),
+			Drivers: []string{
+				fmt.Sprintf("%d decklist dalam cluster archetype", len(group.decks)),
+				fmt.Sprintf("%d tournament signal tersimpan", group.tourneys),
+				fmt.Sprintf("%.1f%% estimasi meta share", metaShare),
+				fmt.Sprintf("%.1f momentum score", momentum),
+			},
+			RiskFactors: deckRiskFactors(group.tourneys, group.top8, metaShare),
+		}
+		p.ForecastReason = fmt.Sprintf("%s diprediksi %s dengan score %.1f karena momentum %.1f dan meta share %.1f%%.",
+			p.Archetype, strings.ToLower(p.ExpectedRole), p.PredictionScore, p.MomentumScore, p.MetaSharePct)
+		predictions = append(predictions, p)
+	}
+
+	sort.SliceStable(predictions, func(i, j int) bool {
+		if predictions[i].PredictionScore != predictions[j].PredictionScore {
+			return predictions[i].PredictionScore > predictions[j].PredictionScore
+		}
+		// Secondary sort: higher tournament_count first, then alphabetical
+		if predictions[i].TournamentCount != predictions[j].TournamentCount {
+			return predictions[i].TournamentCount > predictions[j].TournamentCount
+		}
+		return predictions[i].Archetype < predictions[j].Archetype
+	})
+	if len(predictions) > limit {
+		predictions = predictions[:limit]
+	}
+
+	stats := models.ResearchLabStats{
+		TotalDecks:             len(decks),
+		TotalArchetypes:        len(groups),
+		TotalTournamentSignals: totalTournamentSignals,
+		ModelVersion:           "PokeLab deterministic scout v1.2",
+	}
+	return predictions, stats, nil
+}
+
+func (s *ResearchService) countDecklistsWithCards(ctx context.Context) int {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT deck_id) FROM deck_cards`).Scan(&count)
+	if err != nil || count <= 0 {
+		return 1
+	}
+	return count
+}
+
+func forecastLabel(p models.MetaPrediction) string {
+	switch {
+	case p.PredictionScore >= 82 && p.ConfidencePct >= 70:
+		return "Likely staple"
+	case p.PredictionScore >= 68:
+		return "Rising meta piece"
+	case p.PredictionScore >= 52:
+		return "Watchlist"
+	default:
+		return "Low-confidence signal"
+	}
+}
+
+func recommendedCardAction(p models.MetaPrediction) string {
+	switch p.ForecastLabel {
+	case "Likely staple":
+		return "Prioritaskan testing dan siapkan copy sesuai archetype yang dimainkan."
+	case "Rising meta piece":
+		return "Masukkan ke watchlist, uji 1-2 copy, dan pantau hasil turnamen berikutnya."
+	case "Watchlist":
+		return "Pantau sinergi dan jangan overbuy sebelum muncul di lebih banyak top list."
+	default:
+		return "Gunakan sebagai data scouting, belum cukup kuat untuk keputusan belanja besar."
+	}
+}
+
+func cardRiskFactors(p models.MetaPrediction) []string {
+	risks := []string{}
+	if p.MetaSharePct < 8 {
+		risks = append(risks, "Meta share masih rendah; bisa hanya tech lokal atau efek satu archetype.")
+	}
+	if p.AverageCopies < 1.4 {
+		risks = append(risks, "Rata-rata copy rendah; kemungkinan kartu tech, bukan core engine.")
+	}
+	if p.VolatilityScore > 70 {
+		risks = append(risks, "Volatilitas tinggi; validasi dengan matchup sebelum menaikkan copy.")
+	}
+	if len(risks) == 0 {
+		risks = append(risks, "Risiko utama adalah perubahan meta setelah hasil turnamen baru masuk.")
+	}
+	return risks
+}
+
+func deckGrowthSignal(score, momentum, metaShare float64) string {
+	switch {
+	case score >= 82 && momentum >= 70:
+		return "surging"
+	case metaShare >= 10 && score >= 68:
+		return "consolidating"
+	case score >= 55:
+		return "watch"
+	default:
+		return "fringe"
+	}
+}
+
+func deckExpectedRole(score, metaShare float64) string {
+	switch {
+	case score >= 82:
+		return "Tier contender"
+	case metaShare >= 10:
+		return "Established meta deck"
+	case score >= 58:
+		return "Potential breakout"
+	default:
+		return "Meta watchlist"
+	}
+}
+
+func deckRiskFactors(tourneys, top8 int, metaShare float64) []string {
+	risks := []string{}
+	if tourneys <= 2 {
+		risks = append(risks, "Sample tournament masih kecil.")
+	}
+	if top8 == 0 {
+		risks = append(risks, "Belum ada sinyal top cut kuat di data tersimpan.")
+	}
+	if metaShare > 18 {
+		risks = append(risks, "Deck populer biasanya menjadi target tech anti-meta.")
+	}
+	if len(risks) == 0 {
+		risks = append(risks, "Pantau perubahan tech package dari turnamen berikutnya.")
+	}
+	return risks
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // AskAdvisor asks OpenRouter to explain deterministic PokeLab data.
@@ -277,7 +556,7 @@ func (s *ResearchService) loadCollectionInventory(ctx context.Context, collectio
 		WHERE collection_id = ?
 		GROUP BY card_id
 	`, collectionID)
-	if err != nil {
+	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
@@ -293,7 +572,7 @@ func (s *ResearchService) loadCollectionInventory(ctx context.Context, collectio
 	return inventory, nil
 }
 
-func (s *ResearchService) loadMetaDecks(ctx context.Context, limit int) ([]models.Deck, error) {
+func (s *ResearchService) loadMetaDecks(ctx context.Context, limit int) ([]models.Deck, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, name, COALESCE(archetype, ''), COALESCE(format, 'Standard'),
 		       COALESCE(tournament_count, 0), COALESCE(win_count, 0), COALESCE(top8_count, 0)
@@ -302,7 +581,7 @@ func (s *ResearchService) loadMetaDecks(ctx context.Context, limit int) ([]model
 		ORDER BY tournament_count DESC, win_count DESC, top8_count DESC, name ASC
 		LIMIT ?
 	`, limit)
-	if err != nil {
+	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
@@ -365,7 +644,7 @@ func (s *ResearchService) loadDeckCards(ctx context.Context, deckOrListID string
 		LEFT JOIN cards c ON c.id = dc.card_id
 		WHERE dc.deck_id = ?
 	`, deckOrListID)
-	if err != nil {
+	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
@@ -786,10 +1065,9 @@ func (s *ResearchService) fallbackPredictions(category string, limit int) []mode
 			continue
 		}
 		seed.CardID = fmt.Sprintf("seed-%d", i+1)
-		seed.PredictionScore = round(math.Min(100, float64(seed.Appearances)*8+float64(seed.TotalCopies)*1.5))
-		seed.Trend = trendLabel(seed.PredictionScore)
-		seed.Reason = seed.CardName + " muncul sebagai seed PokeLab karena kuat sebagai staple meta."
-		seed.Factors = []string{"Seed dari panduan meta lokal", "Sering masuk deck kompetitif"}
+		seed = s.enrichCardPrediction(seed, 6)
+		seed.Reason = seed.CardName + " muncul sebagai seed PokeLab karena kuat sebagai staple meta saat data structured belum cukup."
+		seed.Factors = append(seed.Factors, "Seed dari panduan meta lokal")
 		filtered = append(filtered, seed)
 	}
 

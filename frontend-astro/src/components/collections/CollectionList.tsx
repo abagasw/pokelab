@@ -19,16 +19,16 @@ const starterInventory = [
 
 export default function CollectionList() {
   const { collections, fetchCollections, createCollection, addToCollection, loading, error } = useCollectionStore();
-  const { isAuthenticated } = useAuthStore();
+  const { authReady, isAuthenticated } = useAuthStore();
   const [newCollectionName, setNewCollectionName] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [seedingId, setSeedingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (authReady && isAuthenticated) {
       fetchCollections();
     }
-  }, [isAuthenticated, fetchCollections]);
+  }, [authReady, isAuthenticated, fetchCollections]);
 
   const totals = useMemo(() => {
     const cardCount = collections.reduce((sum, collection) => sum + (collection.total_cards || 0), 0);
@@ -58,6 +58,17 @@ export default function CollectionList() {
     setSeedingId(null);
   };
 
+  if (!authReady) {
+    return (
+      <section className="border-y border-border bg-card/40">
+        <div className="mx-auto flex max-w-2xl items-center justify-center px-4 py-12 text-sm text-muted-foreground">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
+          Menyiapkan sesi akun
+        </div>
+      </section>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <section className="border-y border-border bg-card/40">
@@ -69,9 +80,14 @@ export default function CollectionList() {
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             Collection dipakai PokeLab untuk menghitung deck readiness, missing cards, dan buy priority.
           </p>
-          <a href="/login" className="mt-6 inline-flex h-10 items-center justify-center rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
-            Login
-          </a>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <a href="/login?redirect=/collections" className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+              Login
+            </a>
+            <a href="/register?redirect=/collections" className="inline-flex h-10 items-center justify-center rounded-md border border-border px-5 text-sm font-semibold text-foreground hover:bg-accent">
+              Daftar
+            </a>
+          </div>
         </div>
       </section>
     );

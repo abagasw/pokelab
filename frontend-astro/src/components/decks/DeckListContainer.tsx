@@ -15,8 +15,6 @@ const SORT_OPTIONS = [
   { value: 'tournaments', label: 'Tournament Count' },
   { value: 'wins', label: 'Win / Top Signal' },
   { value: 'name', label: 'Nama deck' },
-  { value: 'price_asc', label: 'Harga rendah' },
-  { value: 'price_desc', label: 'Harga tinggi' },
   { value: '', label: 'Default database' },
 ];
 

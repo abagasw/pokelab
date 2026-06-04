@@ -13,7 +13,6 @@ interface PriceState {
 
   // Actions
   fetchArbitrage: (params?: { min_difference?: number; limit?: number }) => Promise<void>;
-  fetchArbitrageOpportunities: (params?: { min_difference?: number; limit?: number }) => Promise<void>;
   setMinDifference: (value: number) => void;
   comparePrices: (cardId: string) => Promise<void>;
   getPricePrediction: (cardId: string) => Promise<void>;
@@ -44,10 +43,6 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     } finally {
       set({ loading: false });
     }
-  },
-
-  fetchArbitrageOpportunities: async (params) => {
-    await get().fetchArbitrage(params);
   },
 
   setMinDifference: (value: number) => {

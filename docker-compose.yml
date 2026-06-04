@@ -1,0 +1,118 @@
+services:
+  frontend:
+    build:
+      context: ./frontend-astro
+      args:
+        PUBLIC_API_URL: /api/v1
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    volumes:
+      - ${CARD_IMAGES_DIR:-./frontend-astro/public/card-images}:/usr/share/nginx/html/card-images:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend-go
+    environment:
+      PORT: 8080
+      GIN_MODE: release
+      ENV: production
+      DB_PATH: /app/data/pokemon_tcg.db
+      REDIS_URL: redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.deploy}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+      EXCHANGE_RATE: ${EXCHANGE_RATE:-16400}
+      DATA_DIR: /app/seed-data
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ${DB_DIR:-./backend-go}:/app/data
+      - ./data:/app/seed-data:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ----------------------------------------------------------------
+  # Auto-Sync Service
+  # Runs the unified sync script on a schedule via Ofelia job runner.
+  # Shares the DB directory and card-images directory with backend/frontend.
+  #
+  # Schedule (configurable via labels on ofelia):
+  #   - Full sync (cards+images+tournaments): daily at 06:00
+  #   - Tournaments-only: every 12 hours
+  # ----------------------------------------------------------------
+  sync:
+    build:
+      context: .
+      dockerfile: scripts/sync/Dockerfile
+    environment:
+      DB_PATH: /app/data/pokemon_tcg.db
+      IMAGE_DIR: /app/card-images
+      SYNC_LOG: /app/logs/sync.log
+      SYNC_WORKERS: ${SYNC_WORKERS:-8}
+      SYNC_TIMEOUT: ${SYNC_TIMEOUT:-20}
+      POKEPEDIA_API_KEY: ${POKEPEDIA_API_KEY:-}
+      POKEPEDIA_SUPABASE_URL: ${POKEPEDIA_SUPABASE_URL:-}
+    volumes:
+      - ${DB_DIR:-./backend-go}:/app/data
+      - ${CARD_IMAGES_DIR:-./frontend-astro/public/card-images}:/app/card-images
+      - sync-logs:/app/logs
+    restart: "no"
+
+  # Ofelia - lightweight job scheduler for Docker
+  # Restarts the 'sync' container on a cron schedule
+  ofelia:
+    image: mcuadros/ofelia:latest
+    depends_on:
+      - sync
+    command: daemon --docker
+    environment:
+      - TZ=${TZ:-Asia/Jakarta}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      ofelia.job-run.sync-full.schedule: "0 6 * * *"
+      ofelia.job-run.sync-full.container: "pokemon-sync-1"
+      ofelia.job-run.sync-tournaments.schedule: "0 */12 * * *"
+      ofelia.job-run.sync-tournaments.container: "pokemon-sync-1"
+      ofelia.job-run.sync-tournaments.command: "--tournaments-only"
+    restart: unless-stopped
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    profiles: ["debug"]
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  sync-logs:

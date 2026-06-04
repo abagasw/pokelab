@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useCollectionStore } from '@stores/index';
+import { useAuthStore, useCollectionStore } from '@stores/index';
 import { BarChart3, ChevronLeft, FlaskConical, ImageIcon, List, Loader2, Package, Plus, Sparkles } from 'lucide-react';
 import PortfolioDashboard from './PortfolioDashboard';
 import { cardImageSrc, setPlaceholderImage } from '@utils/images';
@@ -20,16 +20,20 @@ const sampleInventory = [
 
 export default function CollectionDetailView({ collectionId }: { collectionId: string }) {
   const { currentCollection, fetchCollection, addToCollection, loading, error } = useCollectionStore();
+  const { authReady, isAuthenticated } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'items'>('dashboard');
   const [seeding, setSeeding] = useState(false);
 
   useEffect(() => {
-    fetchCollection(collectionId);
-  }, [collectionId, fetchCollection]);
+    if (authReady && isAuthenticated) {
+      fetchCollection(collectionId);
+    }
+  }, [authReady, collectionId, fetchCollection, isAuthenticated]);
 
   const items = currentCollection?.items || [];
   const totalCards = items.reduce((sum, item) => sum + item.quantity, 0);
   const totalPurchase = items.reduce((sum, item) => sum + (item.purchase_price || 0) * item.quantity, 0);
+  const detailRedirect = encodeURIComponent(`/collections/detail?id=${collectionId}`);
 
   const handleSeed = async () => {
     setSeeding(true);
@@ -41,7 +45,7 @@ export default function CollectionDetailView({ collectionId }: { collectionId: s
     setActiveTab('items');
   };
 
-  if (loading && !currentCollection) {
+  if (!authReady || (loading && (!currentCollection || currentCollection.id !== collectionId))) {
     return (
       <div className="flex justify-center py-20">
         <Loader2 className="h-10 w-10 text-primary animate-spin" />
@@ -49,7 +53,27 @@ export default function CollectionDetailView({ collectionId }: { collectionId: s
     );
   }
 
-  if (!currentCollection) {
+  if (!isAuthenticated) {
+    return (
+      <section className="border border-border bg-card p-8 text-center">
+        <Package className="mx-auto h-10 w-10 text-primary" />
+        <h2 className="mt-4 text-xl font-semibold">Login untuk membuka inventory</h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+          Detail collection hanya bisa dibuka oleh pemilik akun karena dipakai untuk scoring rekomendasi deck.
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <a href={`/login?redirect=${detailRedirect}`} className="inline-flex h-10 items-center rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+            Login
+          </a>
+          <a href={`/register?redirect=${detailRedirect}`} className="inline-flex h-10 items-center rounded-md border border-border px-5 text-sm font-semibold hover:bg-accent">
+            Daftar
+          </a>
+        </div>
+      </section>
+    );
+  }
+
+  if (!currentCollection || currentCollection.id !== collectionId) {
     return (
       <div className="border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive">
         {error || 'Collection tidak ditemukan atau bukan milik akun yang sedang login.'}
@@ -165,8 +189,13 @@ function CollectionItems({ items, onSeed, seeding }: { items: any[]; onSeed: () 
           return (
             <a key={item.id} href={`/cards/detail?id=${encodeURIComponent(item.card_id)}`} className="grid grid-cols-[64px_1fr] gap-3 border border-border bg-background p-3 transition-colors hover:border-primary/50">
               <div className="flex aspect-[3/4] items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
-                {card ? (
-                  <img src={cardImageSrc(card)} alt={card.name_id || item.card_id} className="h-full w-full object-cover" onError={setPlaceholderImage} />
+                {card?.image_url ? (
+                  <img
+                    src={cardImageSrc(card.image_url)}
+                    alt={card.name_id || item.card_id}
+                    className="h-full w-full object-cover"
+                    onError={(event) => setPlaceholderImage(event.currentTarget)}
+                  />
                 ) : (
                   <ImageIcon className="h-6 w-6 text-muted-foreground" />
                 )}

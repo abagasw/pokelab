@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { useAuthStore } from '@stores/authStore';
 
+const getSafeRedirect = () => {
+  if (typeof window === 'undefined') return '/collections';
+  const redirect = new URLSearchParams(window.location.search).get('redirect');
+  if (redirect && redirect.startsWith('/') && !redirect.startsWith('//')) {
+    return redirect;
+  }
+  return '/collections';
+};
+
 export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -9,21 +18,21 @@ export default function LoginForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
-    
-    const success = await login({ email, password });
+
+    const success = await login({ email: email.trim(), password });
     if (success) {
-      window.location.href = '/';
+      window.location.href = getSafeRedirect();
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
+        <div className="rounded-md border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-300">
           {error}
         </div>
       )}
-      
+
       <div className="space-y-2">
         <label htmlFor="email" className="text-sm font-medium">
           Email
@@ -32,10 +41,14 @@ export default function LoginForm() {
           id="email"
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(event) => {
+            clearError();
+            setEmail(event.target.value);
+          }}
           placeholder="nama@email.com"
           required
-          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          autoComplete="email"
+          className="w-full rounded-md border border-input bg-card px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
@@ -47,16 +60,20 @@ export default function LoginForm() {
           id="password"
           type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
+          onChange={(event) => {
+            clearError();
+            setPassword(event.target.value);
+          }}
+          placeholder="********"
           required
           minLength={8}
-          className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          autoComplete="current-password"
+          className="w-full rounded-md border border-input bg-card px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
       <div className="flex items-center justify-between text-sm">
-        <label className="flex items-center space-x-2">
+        <label className="flex items-center space-x-2 text-muted-foreground">
           <input type="checkbox" className="rounded border-gray-300" />
           <span>Ingat saya</span>
         </label>
@@ -68,9 +85,9 @@ export default function LoginForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full py-2 px-4 bg-primary text-white rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full rounded-md bg-primary px-4 py-2 font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {loading ? 'Loading...' : 'Login'}
+        {loading ? 'Login...' : 'Login'}
       </button>
     </form>
   );

@@ -1,0 +1,7 @@
+api-runtime*.log
+bin
+vendor
+.env
+.env.*
+*.db-shm
+*.db-wal

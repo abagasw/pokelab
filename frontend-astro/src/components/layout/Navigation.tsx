@@ -1,6 +1,5 @@
 import { useAuthStore } from '@stores/authStore';
 import {
-  BarChart3,
   ChevronDown,
   FlaskConical,
   Layers3,
@@ -19,17 +18,18 @@ const navItems = [
   { href: '/cards', label: 'Kartu', icon: Search },
   { href: '/decks', label: 'Deck', icon: Layers3 },
   { href: '/collections', label: 'Inventory', icon: Package },
-  { href: '/prices', label: 'Harga', icon: BarChart3 },
 ];
 
 export default function Navigation() {
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, authReady, isAuthenticated, logout } = useAuthStore();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [pathname, setPathname] = useState('/');
+  const [currentPath, setCurrentPath] = useState('/');
 
   useEffect(() => {
     setPathname(window.location.pathname);
+    setCurrentPath(`${window.location.pathname}${window.location.search}`);
   }, []);
 
   const handleLogout = async () => {
@@ -38,6 +38,10 @@ export default function Navigation() {
   };
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const loginHref =
+    currentPath && !['/', '/login', '/register'].includes(pathname)
+      ? `/login?redirect=${encodeURIComponent(currentPath)}`
+      : '/login';
 
   const NavLink = ({ href, label }: (typeof navItems)[number]) => (
     <a
@@ -56,11 +60,8 @@ export default function Navigation() {
     <nav className="sticky top-0 z-50 w-full bg-[#111111]/78 backdrop-blur-xl supports-[backdrop-filter]:bg-[#111111]/62">
       <div className="container flex h-14 items-center px-6 md:px-8">
         <a href="/" className="mr-6 flex min-w-fit items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-red-500 text-white">
-            <FlaskConical className="h-4 w-4" />
-          </span>
           <span className="leading-tight">
-            <span className="block text-sm font-bold text-foreground">PokeLab ID</span>
+            <span className="block text-sm font-bold text-foreground">PokeLab</span>
           </span>
         </a>
 
@@ -72,7 +73,7 @@ export default function Navigation() {
           </div>
 
           <div className="flex items-center gap-3">
-            {isAuthenticated ? (
+            {authReady && isAuthenticated ? (
               <div className="relative">
                 <button
                   onClick={() => setShowUserMenu((value) => !value)}
@@ -119,15 +120,15 @@ export default function Navigation() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : authReady ? (
               <a
-                href="/login"
-                  className="inline-flex h-9 items-center gap-2 rounded-full bg-red-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-red-400"
+                href={loginHref}
+                className="inline-flex h-9 items-center gap-2 rounded-full bg-red-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-red-400"
               >
-                <LogIn className="h-4 w-4" />
+
                 Login
               </a>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -159,7 +160,7 @@ export default function Navigation() {
             ))}
 
             <div className="mt-3 border-t border-white/10 pt-3">
-              {isAuthenticated ? (
+              {authReady && isAuthenticated ? (
                 <>
                   <a
                     href="/profile"
@@ -176,20 +177,20 @@ export default function Navigation() {
                     }}
                     className="flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-sm font-medium text-destructive hover:bg-accent"
                   >
-                    <LogOut className="h-4 w-4" />
+                 
                     Logout
                   </button>
                 </>
-              ) : (
+              ) : authReady ? (
                 <a
-                  href="/login"
+                  href={loginHref}
                   className="flex items-center gap-3 rounded-md bg-red-500 px-3 py-3 text-sm font-semibold text-white"
                   onClick={() => setShowMobileMenu(false)}
                 >
-                  <LogIn className="h-4 w-4" />
+                  
                   Login
                 </a>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

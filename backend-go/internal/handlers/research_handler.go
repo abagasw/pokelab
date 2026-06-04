@@ -143,6 +143,25 @@ func (h *ResearchHandler) GetPredictions(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// GetForecast returns public model-style card and deck meta forecasts.
+func (h *ResearchHandler) GetForecast(c *gin.Context) {
+	category := c.Query("category")
+	limit := 20
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	response, err := h.researchService.GetForecast(c.Request.Context(), category, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
 // AskAdvisor asks OpenRouter to explain deterministic research output.
 func (h *ResearchHandler) AskAdvisor(c *gin.Context) {
 	var req struct {

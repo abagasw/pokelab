@@ -187,17 +187,65 @@ type AntiMetaRecommendation struct {
 
 // MetaPrediction describes a card likely to become important in the meta.
 type MetaPrediction struct {
-	CardID          string   `json:"card_id"`
-	CardName        string   `json:"card_name"`
-	Category        string   `json:"category"`
-	CardType        string   `json:"card_type,omitempty"`
-	Rarity          string   `json:"rarity,omitempty"`
-	Appearances     int      `json:"appearances"`
-	TotalCopies     int      `json:"total_copies"`
-	PredictionScore float64  `json:"prediction_score"`
-	Trend           string   `json:"trend"`
-	Reason          string   `json:"reason"`
-	Factors         []string `json:"factors"`
+	CardID            string   `json:"card_id"`
+	CardName          string   `json:"card_name"`
+	Category          string   `json:"category"`
+	CardType          string   `json:"card_type,omitempty"`
+	Rarity            string   `json:"rarity,omitempty"`
+	Appearances       int      `json:"appearances"`
+	TotalCopies       int      `json:"total_copies"`
+	PredictionScore   float64  `json:"prediction_score"`
+	ConfidencePct     float64  `json:"confidence_pct"`
+	MetaSharePct      float64  `json:"meta_share_pct"`
+	AverageCopies     float64  `json:"average_copies"`
+	VolatilityScore   float64  `json:"volatility_score"`
+	AdoptionVelocity  float64  `json:"adoption_velocity"`
+	StapleIndex       float64  `json:"staple_index"`
+	Trend             string   `json:"trend"`
+	ForecastLabel     string   `json:"forecast_label"`
+	RecommendedAction string   `json:"recommended_action"`
+	Reason            string   `json:"reason"`
+	Factors           []string `json:"factors"`
+	RiskFactors       []string `json:"risk_factors"`
+	ModelSignals      []string `json:"model_signals"`
+}
+
+// MetaDeckPrediction describes an archetype likely to rise or remain dominant.
+type MetaDeckPrediction struct {
+	Archetype              string   `json:"archetype"`
+	RepresentativeDeckID   string   `json:"representative_deck_id"`
+	RepresentativeDeckName string   `json:"representative_deck_name"`
+	PredictedTier          string   `json:"predicted_tier"`
+	PredictionScore        float64  `json:"prediction_score"`
+	ConfidencePct          float64  `json:"confidence_pct"`
+	MomentumScore          float64  `json:"momentum_score"`
+	MetaSharePct           float64  `json:"meta_share_pct"`
+	DeckCount              int      `json:"deck_count"`
+	TournamentCount        int      `json:"tournament_count"`
+	WinCount               int      `json:"win_count"`
+	Top8Count              int      `json:"top8_count"`
+	GrowthSignal           string   `json:"growth_signal"`
+	ExpectedRole           string   `json:"expected_role"`
+	ForecastReason         string   `json:"forecast_reason"`
+	Drivers                []string `json:"drivers"`
+	RiskFactors            []string `json:"risk_factors"`
+}
+
+// ResearchLabStats summarizes model input coverage for the public lab.
+type ResearchLabStats struct {
+	TotalDecks             int    `json:"total_decks"`
+	TotalArchetypes        int    `json:"total_archetypes"`
+	TotalCardSignals       int    `json:"total_card_signals"`
+	TotalTournamentSignals int    `json:"total_tournament_signals"`
+	ModelVersion           string `json:"model_version"`
+}
+
+// ResearchForecastResponse is returned by /research/meta-forecast.
+type ResearchForecastResponse struct {
+	DeckPredictions []MetaDeckPrediction `json:"deck_predictions"`
+	CardPredictions []MetaPrediction     `json:"card_predictions"`
+	LabStats        ResearchLabStats     `json:"lab_stats"`
+	Methodology     []string             `json:"methodology"`
 }
 
 // AIResearchAdvice is the response for contextual research advisor questions.

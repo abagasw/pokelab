@@ -27,6 +27,7 @@ import type {
   DeckGapAnalysis,
   AntiMetaRecommendation,
   MetaPrediction,
+  ResearchForecastResponse,
   AIResearchAdvice
 } from '@/types/index';
 
@@ -627,6 +628,15 @@ class ApiClient {
   async getMetaPredictions(params?: { category?: string; limit?: number }): Promise<ApiResponse<MetaPrediction[]>> {
     try {
       const data = await this.get<MetaPrediction[]>('/research/predictions', { params });
+      return this.wrapResponse(data);
+    } catch (error: any) {
+      return this.wrapError(error);
+    }
+  }
+
+  async getResearchForecast(params?: { category?: string; limit?: number }): Promise<ApiResponse<ResearchForecastResponse>> {
+    try {
+      const data = await this.get<ResearchForecastResponse>('/research/meta-forecast', { params });
       return this.wrapResponse(data);
     } catch (error: any) {
       return this.wrapError(error);

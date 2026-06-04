@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"pokemon-tcg-indonesia/internal/models"
 	"strings"
 )
@@ -77,16 +78,28 @@ func (db *DB) SearchCards(req models.CardSearchRequest) ([]models.Card, int64, e
 			  c.hp, c.card_type, c.evolution_stage, c.evolves_from, c.retreat_cost,
 			  c.attacks, c.abilities, c.weakness, c.resistance, c.pokedex, c.created_at, c.updated_at` + baseQuery
 	
-	// Add sorting
+	// Add sorting with whitelist to prevent SQL injection
 	sortField := req.SortBy
 	if sortField == "" {
 		sortField = "name_id"
 	}
-	sortOrder := req.SortOrder
-	if sortOrder == "" {
+	allowedSortFields := map[string]string{
+		"name_id": "c.name_id", "name_en": "c.name_en", "name": "c.name_id",
+		"hp": "c.hp", "rarity": "c.rarity", "category": "c.category",
+		"card_type": "c.card_type", "expansion": "c.expansion_code",
+		"expansion_code": "c.expansion_code", "collector_number": "c.collector_number",
+		"created_at": "c.created_at", "updated_at": "c.updated_at",
+	}
+	columnName, ok := allowedSortFields[sortField]
+	if !ok {
+		columnName = "c.name_id"
+	}
+
+	sortOrder := strings.ToLower(req.SortOrder)
+	if sortOrder != "asc" && sortOrder != "desc" {
 		sortOrder = "asc"
 	}
-	query += fmt.Sprintf(" ORDER BY c.%s %s", sortField, sortOrder)
+	query += fmt.Sprintf(" ORDER BY %s %s", columnName, sortOrder)
 	
 	// Add pagination
 	limit := req.Limit
@@ -173,6 +186,7 @@ func (db *DB) GetExpansions() ([]models.Expansion, error) {
 		err := rows.Scan(&e.ID, &e.Code, &e.NameID, &e.NameEN, &e.SeriesID, &e.SeriesNameEN, &e.SeriesNameID,
 			&e.ProductType, &e.TotalCards, &releasedAt, &e.PackImageURL, &e.SetSymbolURL, &e.CreatedAt)
 		if err != nil {
+			log.Printf("WARN: scan expansion row: %v", err)
 			continue
 		}
 		if releasedAt.Valid {
@@ -222,6 +236,7 @@ func (db *DB) GetCardPrices(cardID string) ([]models.CardPrice, error) {
 		var p models.CardPrice
 		err := rows.Scan(&p.ID, &p.CardID, &p.Source, &p.PriceIDR, &p.PriceUSD, &p.Currency, &p.Condition, &p.URL, &p.LastUpdated, &p.CreatedAt)
 		if err != nil {
+			log.Printf("WARN: scan price row: %v", err)
 			continue
 		}
 		prices = append(prices, p)
@@ -231,7 +246,7 @@ func (db *DB) GetCardPrices(cardID string) ([]models.CardPrice, error) {
 }
 
 // GetPriceComparisons gets price comparisons for arbitrage
-func (db *DB) GetPriceComparisons(minPrice float64) ([]models.ArbitrageComparison, error) {
+func (db *DB) GetPriceComparisons(minPrice float64, exchangeRate float64) ([]models.ArbitrageComparison, error) {
 	query := `SELECT c.id, c.name_id, c.name_en, c.expansion_code,
 			  p_idr.price_idr, p_usd.price_usd
 		  FROM cards c
@@ -255,13 +270,14 @@ func (db *DB) GetPriceComparisons(minPrice float64) ([]models.ArbitrageCompariso
 		
 		err := rows.Scan(&pc.CardID, &pc.CardName, &pc.NameEN, &expansion, &priceIDR, &priceUSD)
 		if err != nil {
+			log.Printf("WARN: scan arbitrage row: %v", err)
 			continue
 		}
 		
 		pc.PriceIDR = &priceIDR
 		pc.PriceUSD = &priceUSD
 		pc.Expansion = expansion
-		pc.ExchangeRate = 16400.0
+		pc.ExchangeRate = exchangeRate
 		
 		// Calculate arbitrage metrics
 		if priceUSD > 0 {
@@ -305,6 +321,7 @@ func (db *DB) GetDecks(format string, limit, offset int) ([]models.Deck, error) 
 		err := rows.Scan(&d.ID, &d.ExternalID, &d.Name, &d.Description, &d.Format,
 			&d.TournamentCount, &d.WinCount, &d.Top8Count, &d.CreatedAt, &d.UpdatedAt)
 		if err != nil {
+			log.Printf("WARN: scan deck row: %v", err)
 			continue
 		}
 		decks = append(decks, d)
@@ -349,6 +366,7 @@ func (db *DB) GetTournaments(format string, limit int) ([]models.Tournament, err
 		var date sql.NullTime
 		err := rows.Scan(&t.ID, &t.ExternalID, &t.Name, &date, &t.Format, &t.Location, &t.PlayerCount, &t.CreatedAt)
 		if err != nil {
+			log.Printf("WARN: scan tournament row: %v", err)
 			continue
 		}
 		if date.Valid {
@@ -426,6 +444,7 @@ func scanFullCards(rows *sql.Rows) ([]models.Card, error) {
 	for rows.Next() {
 		card, err := scanCardFromRow(rows)
 		if err != nil {
+			log.Printf("WARN: scan card row: %v", err)
 			continue
 		}
 		cards = append(cards, card)
@@ -464,19 +483,29 @@ func scanCardFromRow(scanner interface{}) (models.Card, error) {
 	
 	// Unmarshal JSON fields
 	if len(attacksJSON) > 0 {
-		json.Unmarshal(attacksJSON, &c.Attacks)
+		if err := json.Unmarshal(attacksJSON, &c.Attacks); err != nil {
+			log.Printf("WARN: unmarshal attacks for card %s: %v", c.ID, err)
+		}
 	}
 	if len(abilitiesJSON) > 0 {
-		json.Unmarshal(abilitiesJSON, &c.Abilities)
+		if err := json.Unmarshal(abilitiesJSON, &c.Abilities); err != nil {
+			log.Printf("WARN: unmarshal abilities for card %s: %v", c.ID, err)
+		}
 	}
 	if len(weaknessJSON) > 0 {
-		json.Unmarshal(weaknessJSON, &c.Weakness)
+		if err := json.Unmarshal(weaknessJSON, &c.Weakness); err != nil {
+			log.Printf("WARN: unmarshal weakness for card %s: %v", c.ID, err)
+		}
 	}
 	if len(resistanceJSON) > 0 {
-		json.Unmarshal(resistanceJSON, &c.Resistance)
+		if err := json.Unmarshal(resistanceJSON, &c.Resistance); err != nil {
+			log.Printf("WARN: unmarshal resistance for card %s: %v", c.ID, err)
+		}
 	}
 	if len(pokedexJSON) > 0 {
-		json.Unmarshal(pokedexJSON, &c.Pokedex)
+		if err := json.Unmarshal(pokedexJSON, &c.Pokedex); err != nil {
+			log.Printf("WARN: unmarshal pokedex for card %s: %v", c.ID, err)
+		}
 	}
 	
 	return c, nil

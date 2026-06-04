@@ -512,9 +512,54 @@ export interface MetaPrediction {
   appearances: number;
   total_copies: number;
   prediction_score: number;
+  confidence_pct?: number;
+  meta_share_pct?: number;
+  average_copies?: number;
+  volatility_score?: number;
+  adoption_velocity?: number;
+  staple_index?: number;
   trend: 'rising' | 'watch' | 'stable' | string;
+  forecast_label?: string;
+  recommended_action?: string;
   reason: string;
   factors: string[];
+  risk_factors?: string[];
+  model_signals?: string[];
+}
+
+export interface MetaDeckPrediction {
+  archetype: string;
+  representative_deck_id: string;
+  representative_deck_name: string;
+  predicted_tier: string;
+  prediction_score: number;
+  confidence_pct: number;
+  momentum_score: number;
+  meta_share_pct: number;
+  deck_count: number;
+  tournament_count: number;
+  win_count: number;
+  top8_count: number;
+  growth_signal: string;
+  expected_role: string;
+  forecast_reason: string;
+  drivers: string[];
+  risk_factors: string[];
+}
+
+export interface ResearchLabStats {
+  total_decks: number;
+  total_archetypes: number;
+  total_card_signals: number;
+  total_tournament_signals: number;
+  model_version: string;
+}
+
+export interface ResearchForecastResponse {
+  deck_predictions: MetaDeckPrediction[];
+  card_predictions: MetaPrediction[];
+  lab_stats: ResearchLabStats;
+  methodology: string[];
 }
 
 export interface AIResearchAdvice {
@@ -522,3 +567,17 @@ export interface AIResearchAdvice {
   answer: string;
   context?: string;
 }
+
+// ML Types re-export
+export type {
+  MLPredictionRequest,
+  MLPredictionResponse,
+  MLPricePrediction,
+  MLAnomalyDetectionRequest,
+  MLAnomaly,
+  MLAnomalyResponse,
+  MLModelInfo,
+  MLDeckRankingRequest,
+  MLDeckRanking,
+  MLTrainingMetrics,
+} from './ml';

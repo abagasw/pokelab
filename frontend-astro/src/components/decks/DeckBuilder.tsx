@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDeckStore, useCollectionStore, useAuthStore } from '@stores/index';
 import { Sparkles, Loader2, Coins, Target, Package, Lock } from 'lucide-react';
-import { formatIDR, formatUSD, getTypeColor } from '@utils/formatters';
 import type { DeckBuildRequest, DeckBuildResponse } from '../../types';
 
 const POKEMON_TYPES = [
@@ -346,33 +345,6 @@ function DeckResult({ deck, onClear }: { deck: DeckBuildResponse; onClear: () =>
           </button>
         </div>
       </div>
-
-      {/* Pricing Info */}
-      {deck.pricing && (
-        <div className="rounded-lg border bg-muted/50 p-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <p className="text-sm text-muted-foreground">Total Harga (IDR)</p>
-              <p className="text-xl font-bold text-green-600">
-                {formatIDR(deck.pricing.total_idr)}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Harga (USD)</p>
-              <p className="text-xl font-bold text-blue-600">
-                {formatUSD(deck.pricing.total_usd)}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Status Budget</p>
-              <p className={`text-xl font-bold ${deck.pricing.within_budget ? 'text-green-600' : 'text-red-600'}`}>
-                {deck.pricing.within_budget ? '✓ Sesuai' : '✗ Over'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Cards Breakdown */}
       {categorizedCards && (
         <div className="space-y-4">
@@ -460,11 +432,6 @@ function CardSection({
               <span className="font-medium text-sm">{card.count}x</span>
               <span className="text-sm">{card.card_name}</span>
             </div>
-            {card.price_idr && (
-              <span className="text-sm text-muted-foreground">
-                {formatIDR(card.price_idr * card.count)}
-              </span>
-            )}
           </div>
         ))}
       </div>

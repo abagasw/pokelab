@@ -1,6 +1,6 @@
 # PokeLab ID - Pokemon TCG Indonesia
 
-PokeLab ID adalah research lab untuk Pokemon TCG Indonesia. Fokus project ini adalah database kartu, inventory collection, rekomendasi deck meta berdasarkan kartu yang dimiliki user, deck gap analysis, anti-meta advisor, price tracker, meta prediction, dan AI explanation via OpenRouter.
+PokeLab ID adalah research lab untuk Pokemon TCG Indonesia. Fokus project ini adalah database kartu, inventory collection, rekomendasi deck meta berdasarkan kartu yang dimiliki user, deck gap analysis, anti-meta advisor, meta prediction, deck builder, dan AI explanation via OpenRouter.
 
 Project ini terdiri dari:
 
@@ -27,7 +27,8 @@ Install tool berikut:
 
 - Node.js 18 atau lebih baru.
 - npm 9 atau lebih baru.
-- Go 1.21 atau lebih baru. Project saat ini sudah dites dengan Go 1.25.
+- Go 1.25 untuk menjalankan backend lokal tanpa Docker.
+- Docker Desktop, jika ingin menjalankan stack deploy lokal.
 - Git, opsional tapi disarankan.
 
 Project memakai SQLite embedded melalui `modernc.org/sqlite`, jadi untuk development lokal tidak perlu install server database.
@@ -147,6 +148,77 @@ http://127.0.0.1:3000
 
 Jika port `3000` terpakai, Astro biasanya menawarkan port lain. Ikuti URL yang muncul di terminal.
 
+## Menjalankan Full Stack dengan Docker
+
+Docker adalah opsi paling rapi untuk testing deploy lokal karena Go, Nginx frontend, backend, Redis, dan volume SQLite berjalan dengan konfigurasi yang sama.
+
+1. Siapkan env deploy:
+
+```powershell
+Copy-Item .env.deploy.example .env.deploy
+```
+
+2. Edit `.env.deploy` dan ganti minimal:
+
+```env
+JWT_SECRET=isi-dengan-secret-panjang
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
+```
+
+3. Build dan jalankan:
+
+```powershell
+docker compose --env-file .env.deploy up -d --build
+```
+
+4. Buka:
+
+```text
+Frontend: http://localhost:3000
+Backend:  http://localhost:8080/api/v1/health
+Redis:    redis:6379 di network Docker
+```
+
+5. Lihat status container:
+
+```powershell
+docker compose --env-file .env.deploy ps
+```
+
+6. Matikan stack:
+
+```powershell
+docker compose --env-file .env.deploy down
+```
+
+### Arsitektur Docker
+
+```text
+Browser
+  |
+  v
+frontend nginx :3000
+  |-- static Astro files
+  |-- /api/v1/* reverse proxy
+  |-- /card-images/* mounted dari frontend-astro/public/card-images
+  v
+backend Go API :8080
+  |-- SQLite file: backend-go/pokemon_tcg.db mounted to /app/data/pokemon_tcg.db
+  |-- Redis cache: redis:6379
+  |-- OpenRouter: explain/advisor/build when API key is available
+```
+
+Redis sudah disiapkan sebagai service cache untuk backend. Saat ini SQLite tetap menjadi database utama v1, disimpan lewat bind mount agar data tidak hilang saat container diganti.
+
+Card image lokal tidak dimasukkan ke Docker image frontend supaya build context tetap kecil. Folder ini di-mount oleh Compose:
+
+```text
+./frontend-astro/public/card-images -> /usr/share/nginx/html/card-images
+```
+
+Jika deploy ke VPS, pastikan folder `card-images` ikut tersedia di host atau pindahkan asset gambar ke object storage/CDN dan update `image_url` di database.
+
 ## Alur Development Harian
 
 1. Jalankan backend:
@@ -227,6 +299,16 @@ Output build frontend ada di:
 frontend-astro/dist/
 ```
 
+### E2E runtime check
+
+Setelah frontend dan backend hidup, jalankan:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/e2e/pokelab-e2e.ps1
+```
+
+Script ini mengetes health, frontend route aktif, route `/prices` sudah nonaktif, negative auth, register/login, detail kartu, asset image kartu, detail deck, decklists, AI deck builder fallback, deck analyze, collections, ownership protection, research recommendations, deck-analysis, anti-meta, predictions, advisor, dan AI suggest decks.
+
 ### Preview frontend production build
 
 ```bash
@@ -248,7 +330,6 @@ Public:
 - `GET /cards`
 - `GET /cards/:id`
 - `GET /decks`
-- `GET /prices/best-deals`
 - `POST /auth/register`
 - `POST /auth/login`
 
@@ -320,7 +401,7 @@ Lalu hentikan proses yang memakai port tersebut jika memang tidak diperlukan.
 Jawaban singkat:
 
 - Development lokal: tidak perlu Docker.
-- Production sederhana/VPS: gunakan Docker untuk backend, deploy frontend sebagai static site, dan simpan SQLite di persistent volume.
+- Production sederhana/VPS: gunakan Docker Compose full stack atau backend Docker + frontend static hosting, dan simpan SQLite di persistent volume.
 - Jangan deploy "database saja di Docker" untuk kondisi project sekarang, karena database saat ini adalah SQLite file, bukan database server.
 - Untuk production serius multi-user: migrasi database ke PostgreSQL, lalu deploy PostgreSQL sebagai managed database atau container terpisah.
 
@@ -366,13 +447,15 @@ Cocok untuk:
 
 #### Opsi B: Full Docker di VPS
 
-Jalankan backend dalam Docker, SQLite disimpan sebagai volume.
+Jalankan frontend, backend, Redis, dan SQLite bind mount lewat Docker Compose.
 
 Contoh konsep:
 
 ```text
-container backend -> /app/data/pokemon_tcg.db
-host volume      -> ./backend-data/pokemon_tcg.db
+container frontend -> nginx static + /api/v1 proxy
+container backend  -> /app/data/pokemon_tcg.db
+container redis    -> redis:6379
+host database      -> ./backend-go/pokemon_tcg.db
 ```
 
 Cocok untuk:
@@ -380,6 +463,7 @@ Cocok untuk:
 - VPS sendiri.
 - Ingin backend mudah restart/update.
 - Tetap ingin SQLite.
+- Ingin Redis siap untuk cache tanpa install manual.
 
 Catatan: pastikan volume database persisten. Jangan simpan database hanya di layer container, karena data bisa hilang saat container diganti.
 
@@ -436,6 +520,8 @@ go test ./...
 
 cd ../frontend-astro
 npm run build
+
+powershell -ExecutionPolicy Bypass -File ../scripts/e2e/pokelab-e2e.ps1
 ```
 
 Health:
@@ -443,3 +529,122 @@ Health:
 ```bash
 curl http://localhost:8080/api/v1/health
 ```
+
+## Auto-Sync Data
+
+Project ini dilengkapi auto-sync yang secara otomatis memperbarui:
+
+1. **Data kartu + gambar** dari Pokepedia.id (Supabase API)
+2. **Data turnamen + decklist** dari LimitlessTCG
+
+### Cara Kerja
+
+```text
+Ofelia (job scheduler)
+  |-- Setiap hari 06:00 Jakarta -> jalankan sync container (full sync)
+  |-- Setiap 12 jam            -> jalankan sync container (tournaments only)
+  v
+Sync Container (scripts/sync/sync_all.py)
+  |-- Fetch expansions + cards dari Pokepedia Supabase API
+  |-- Download card images (R2 bucket, DNS bypass jika ISP hijack)
+  |-- Scrape tournament list dari LimitlessTCG
+  |-- Scrape standings + decklist untuk turnamen baru
+  |-- Update SQLite DB + image files via shared volumes
+  v
+Backend Container -> baca DB terbaru via shared volume
+Frontend Container -> serve card images terbaru via shared volume
+```
+
+### Arsitektur Volume
+
+```text
+Host filesystem:
+  ./backend-go/pokemon_tcg.db  <- DB_DIR bind mount -> backend + sync
+  ./frontend-astro/public/card-images/ <- CARD_IMAGES_DIR bind mount -> frontend + sync
+```
+
+### Deploy di Server (Contabo)
+
+1. Clone repo dan setup env:
+
+```bash
+git clone <repo-url> /opt/pokemon
+cd /opt/pokemon
+cp .env.deploy.example .env.deploy
+```
+
+2. Edit `.env.deploy`:
+
+```env
+JWT_SECRET=your-production-secret-here
+OPENROUTER_API_KEY=your-key-here
+DB_DIR=./backend-go
+CARD_IMAGES_DIR=./frontend-astro/public/card-images
+TZ=Asia/Jakarta
+```
+
+3. Jalankan initial sync (download semua kartu + gambar):
+
+```bash
+docker compose --env-file .env.deploy run --rm sync
+```
+
+4. Start full stack:
+
+```bash
+docker compose --env-file .env.deploy up -d --build
+```
+
+Ini akan menjalankan:
+- **frontend**: nginx di port 3000
+- **backend**: Go API di port 8080
+- **redis**: cache
+- **sync**: container yang run-once
+- **ofelia**: job scheduler yang otomatis restart `sync` container pada jadwal
+
+5. Lihat log sync:
+
+```bash
+docker compose --env-file .env.deploy logs sync
+# Atau lihat log file persistent:
+docker compose --env-file .env.deploy exec ofelia cat /app/logs/sync.log
+```
+
+### Manual Sync
+
+Jika ingin menjalankan sync manual tanpa menunggu jadwal:
+
+```bash
+# Full sync (kartu + gambar + turnamen)
+docker compose --env-file .env.deploy run --rm sync
+
+# Hanya turnamen saja (lebih cepat)
+docker compose --env-file .env.deploy run --rm sync python /app/sync_all.py --tournaments-only
+
+# Hanya kartu + gambar saja
+docker compose --env-file .env.deploy run --rm sync python /app/sync_all.py --cards-only
+
+# Dry run (cek apa yang akan di-sync tanpa mengubah apapun)
+docker compose --env-file .env.deploy run --rm sync python /app/sync_all.py --dry-run
+```
+
+### Ubah Jadwal Sync
+
+Edit label pada service `ofelia` di `docker-compose.yml`:
+
+```yaml
+labels:
+  # Full sync setiap hari jam 6 pagi
+  ofelia.job-run.sync-full.schedule: "0 6 * * *"
+  # Tournaments-only setiap 12 jam
+  ofelia.job-run.sync-tournaments.schedule: "0 */12 * * *"
+```
+
+Format jadwal = cron expression standar: `minute hour day month weekday`
+
+### Troubleshooting Sync
+
+- **R2 bucket timeout**: Script otomatis mendeteksi DNS hijack dan menggunakan Cloudflare DNS bypass via `curl --resolve`
+- **Tidak ada turnamen baru**: LimitlessTCG mungkin belum update. Cek manual di `https://limitlesstcg.com/tournaments`
+- **Gambar gagal download**: Cek log untuk error detail. Kemungkinan ISP blocking atau rate limit
+- **DB locked**: Pastikan hanya sync container yang menulis ke DB saat berjalan. Backend baca saja saat sync berlangsung

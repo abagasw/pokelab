@@ -177,17 +177,10 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// In production, send email. For now, return token in development
-	if token != "" {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "If email exists, reset link has been sent",
-			"token":   token, // Remove in production
-		})
-	} else {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "If email exists, reset link has been sent",
-		})
-	}
+	_ = token
+	c.JSON(http.StatusOK, gin.H{
+		"message": "If email exists, reset link has been sent",
+	})
 }
 
 // ResetPassword godoc

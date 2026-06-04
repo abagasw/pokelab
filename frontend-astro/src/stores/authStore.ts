@@ -9,6 +9,7 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
+  authReady: boolean;
   loading: boolean;
   error: string | null;
   
@@ -32,6 +33,7 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      authReady: false,
       loading: false,
       error: null,
 
@@ -48,6 +50,7 @@ export const useAuthStore = create<AuthState>()(
               accessToken: access_token,
               refreshToken: refresh_token,
               isAuthenticated: true,
+              authReady: true,
               loading: false,
             });
             return true;
@@ -73,6 +76,7 @@ export const useAuthStore = create<AuthState>()(
               accessToken: access_token,
               refreshToken: refresh_token,
               isAuthenticated: true,
+              authReady: true,
               loading: false,
             });
             return true;
@@ -101,6 +105,7 @@ export const useAuthStore = create<AuthState>()(
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
+          authReady: true,
           error: null,
         });
       },
@@ -112,6 +117,7 @@ export const useAuthStore = create<AuthState>()(
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
+          authReady: true,
           loading: false,
           error: null,
         });
@@ -132,6 +138,7 @@ export const useAuthStore = create<AuthState>()(
               accessToken: access_token,
               refreshToken: refresh_token,
               isAuthenticated: true,
+              authReady: true,
             });
             return true;
           } else {
@@ -148,13 +155,13 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response = await api.getMe();
           if (response.success && response.data) {
-            set({ user: response.data });
+            set({ user: response.data, isAuthenticated: true, authReady: true });
           } else {
             const refreshed = await get().refreshAccessToken();
             if (refreshed) {
               const retry = await api.getMe();
               if (retry.success && retry.data) {
-                set({ user: retry.data });
+                set({ user: retry.data, isAuthenticated: true, authReady: true });
                 return;
               }
             }
@@ -194,6 +201,7 @@ export const useAuthStore = create<AuthState>()(
           accessToken: auth.access_token,
           refreshToken: auth.refresh_token,
           isAuthenticated: true,
+          authReady: true,
         });
       },
     }),
@@ -219,7 +227,10 @@ export const initAuth = () => {
   }
   if (state.accessToken) {
     api.setAuthToken(state.accessToken);
+    useAuthStore.setState({ authReady: true, isAuthenticated: true });
     // Verify token by fetching current user
     state.fetchCurrentUser();
+  } else {
+    useAuthStore.setState({ authReady: true });
   }
 };

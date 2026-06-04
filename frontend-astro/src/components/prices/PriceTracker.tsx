@@ -9,14 +9,14 @@ export default function PriceTracker() {
     loading, 
     error, 
     minDifference, 
-    fetchArbitrageOpportunities,
+    fetchArbitrage,
     setMinDifference 
   } = usePriceStore();
 
   const [limit, setLimit] = useState(20);
 
   useEffect(() => {
-    fetchArbitrageOpportunities({ min_difference: minDifference / 100, limit });
+    fetchArbitrage({ min_difference: minDifference / 100, limit });
   }, [minDifference, limit]);
 
   return (

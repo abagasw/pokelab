@@ -240,7 +240,13 @@ export default function DeckDetailPage() {
         </div>
       </section>
 
-      <DeckAnalysisPanel deck={deck} analysis={analysis} />
+      <DeckAnalysisPanel
+        deck={deck}
+        analysis={analysis}
+        aiGuide={aiGuide}
+        aiGuideLoading={aiGuideLoading}
+        onAskAI={requestAiGuide}
+      />
     </Shell>
   );
 }
@@ -319,7 +325,19 @@ function buildDeckAnalysis(decklists: Decklist[]): DeckAnalysisSummary {
   };
 }
 
-function DeckAnalysisPanel({ deck, analysis }: { deck: Deck; analysis: DeckAnalysisSummary | null }) {
+function DeckAnalysisPanel({
+  deck,
+  analysis,
+  aiGuide,
+  aiGuideLoading,
+  onAskAI,
+}: {
+  deck: Deck;
+  analysis: DeckAnalysisSummary | null;
+  aiGuide: string;
+  aiGuideLoading: boolean;
+  onAskAI: () => void;
+}) {
   if (!analysis) return null;
 
   return (
@@ -383,6 +401,10 @@ function DeckAnalysisPanel({ deck, analysis }: { deck: Deck; analysis: DeckAnaly
         </Panel>
       </section>
 
+      <Panel title="Visual Decklist" description="Galeri kartu dari representative list. Klik kartu untuk membuka detail kartu dan konteks kebutuhan di deck.">
+        <CardImageGallery cards={analysis.cards} deckId={analysis.representative?.deck_id || deck.id} decklistId={analysis.representative?.id} />
+      </Panel>
+
       <DeckGuidePanel
         deckName={deck.name}
         archetype={deck.archetype}
@@ -414,12 +436,56 @@ function DeckAnalysisPanel({ deck, analysis }: { deck: Deck; analysis: DeckAnaly
         keyCards={analysis.keyCards.map((card) => card.card_name)}
         aiAnswer={aiGuide}
         aiLoading={aiGuideLoading}
-        onAskAI={requestAiGuide}
+        onAskAI={onAskAI}
       />
 
       <Panel title="Card Usage Matrix" description="Detail tiap kartu: berapa copy dipakai, role, kontribusi deck, harga, dan catatan penggunaan.">
         <CardUsageTable cards={analysis.cards} deckId={analysis.representative?.deck_id || deck.id} decklistId={analysis.representative?.id} />
       </Panel>
+    </div>
+  );
+}
+
+function CardImageGallery({ cards, deckId, decklistId }: { cards: DeckCardAnalysis[]; deckId: string; decklistId?: string }) {
+  const visibleCards = cards.filter((card) => card.image_url);
+
+  if (visibleCards.length === 0) {
+    return (
+      <div className="border border-dashed border-border bg-background p-8 text-center text-sm text-muted-foreground">
+        Belum ada image kartu untuk representative decklist ini.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
+      {visibleCards.map((card) => (
+        <a
+          key={card.card_id}
+          href={`/cards/detail?id=${encodeURIComponent(card.card_id)}&deck_id=${encodeURIComponent(deckId)}${decklistId ? `&decklist_id=${encodeURIComponent(decklistId)}` : ''}`}
+          className="group min-w-0"
+        >
+          <div className="relative aspect-[63/88] overflow-hidden rounded-md border border-border bg-muted transition-colors group-hover:border-primary/70">
+            <img
+              src={cardImageSrc(card.image_url)}
+              alt={card.card_name}
+              className="h-full w-full object-cover transition-transform group-hover:scale-105"
+              loading="lazy"
+              onError={(event) => setPlaceholderImage(event.currentTarget)}
+            />
+            <span className="absolute left-1.5 top-1.5 rounded-md bg-background/90 px-1.5 py-0.5 font-mono text-xs font-bold text-primary shadow-sm">
+              {card.count}x
+            </span>
+          </div>
+          <div className="mt-2 min-w-0">
+            <p className="truncate text-xs font-semibold text-foreground group-hover:text-primary">{card.card_name}</p>
+            <div className="mt-1 flex min-w-0 items-center justify-between gap-1">
+              <span className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">{card.role}</span>
+              <span className="font-mono text-[10px] text-primary">{card.importance}</span>
+            </div>
+          </div>
+        </a>
+      ))}
     </div>
   );
 }
