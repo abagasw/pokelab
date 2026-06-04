@@ -1,0 +1,42 @@
+﻿# ML Pipeline Configuration
+
+[database]
+path = "../backend-go/pokemon_tcg.db"
+
+[mlflow]
+tracking_uri = "sqlite:///mlflow.db"
+experiment_name = "pokemon-tcg-prediction"
+
+[features]
+# Price prediction features
+price_lookback_days = 30
+moving_average_windows = [7, 14, 30]
+meta_signal_weight = 0.3
+
+# Feature update schedule
+daily_feature_update = "02:00"
+hourly_price_update = "00:30"
+
+[models]
+# Time series
+price_prediction_horizon = 30
+min_data_points = 60
+retrain_frequency_days = 7
+
+# Ranking
+deck_recommendation_count = 10
+ranking_model_retrain_days = 14
+
+# Anomaly detection
+anomaly_threshold_std = 3.0
+price_spike_threshold = 0.5
+
+[monitoring]
+alert_prediction_error_threshold = 0.20
+alert_feature_drift_threshold = 0.15
+
+[api]
+host = "0.0.0.0"
+port = 8081
+batch_size = 100
+max_concurrent_predictions = 10
