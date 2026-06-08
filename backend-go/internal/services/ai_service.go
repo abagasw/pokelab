@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -38,20 +39,20 @@ type OpenRouterResponse struct {
 }
 
 var fallbackOpenRouterModels = []string{
-	"meta-llama/llama-3.2-3b-instruct:free",
-	"qwen/qwen3-next-80b-a3b-instruct:free",
-	"nvidia/nemotron-nano-9b-v2:free",
+	"amazon/nova-micro-v1",
+	"openai/gpt-oss-20b",
+	"meta-llama/llama-3.1-8b-instruct",
 }
 
 // NewAIService creates a new AIService
 func NewAIService(apiKey string) *AIService {
-	return NewAIServiceWithModel(apiKey, "meta-llama/llama-3.3-70b-instruct:free")
+	return NewAIServiceWithModel(apiKey, "amazon/nova-micro-v1")
 }
 
 // NewAIServiceWithModel creates a new AIService with a configurable OpenRouter model.
 func NewAIServiceWithModel(apiKey, model string) *AIService {
 	if model == "" {
-		model = "meta-llama/llama-3.3-70b-instruct:free"
+		model = "amazon/nova-micro-v1"
 	}
 	if apiKey == "your_api_key_here" {
 		apiKey = ""
@@ -60,7 +61,7 @@ func NewAIServiceWithModel(apiKey, model string) *AIService {
 		apiKey: apiKey,
 		model:  model,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 15 * time.Second,
 		},
 	}
 }
@@ -94,49 +95,73 @@ func (s *AIService) Ask(ctx context.Context, systemPrompt, userPrompt string) (s
 }
 
 func (s *AIService) askWithModel(ctx context.Context, model, systemPrompt, userPrompt string) (string, error) {
+	models := []string{model}
+
 	reqBody := OpenRouterRequest{
-		Model: model,
 		Messages: []Message{
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: userPrompt},
 		},
 	}
 
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+	var lastErr error
+	for _, m := range models {
+		reqBody.Model = m
+		jsonBody, err := json.Marshal(reqBody)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal request: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewBuffer(jsonBody))
+		if err != nil {
+			return "", fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+s.apiKey)
+		req.Header.Set("HTTP-Referer", "https://pokemontcg.id")
+		req.Header.Set("X-Title", "Pokemon TCG Indonesia API")
+
+		resp, err := s.client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to send request: %w", err)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			var errResp map[string]interface{}
+			json.Unmarshal(body, &errResp)
+			errMsg := fmt.Sprintf("AI error (status %d)", resp.StatusCode)
+			if e, ok := errResp["error"].(map[string]interface{}); ok {
+				if msg, ok := e["message"].(string); ok {
+					errMsg = msg
+				}
+			}
+			lastErr = fmt.Errorf("%s", errMsg)
+			continue
+		}
+
+		var result OpenRouterResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("failed to decode response: %w", err)
+			continue
+		}
+		resp.Body.Close()
+
+		if len(result.Choices) == 0 {
+			lastErr = fmt.Errorf("no response from AI")
+			continue
+		}
+
+		return result.Choices[0].Message.Content, nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+	if lastErr != nil {
+		return "", lastErr
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("HTTP-Referer", "https://pokemontcg.id")
-	req.Header.Set("X-Title", "Pokemon TCG Indonesia API")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	var result OpenRouterResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("no response from AI")
-	}
-
-	return result.Choices[0].Message.Content, nil
+	return "", fmt.Errorf("all AI models failed")
 }
 
 // AskWithContext sends a question with full context

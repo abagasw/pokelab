@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"net/http"
 	"pokemon-tcg-indonesia/internal/middleware"
 	"pokemon-tcg-indonesia/internal/services"
@@ -12,11 +13,14 @@ import (
 // ResearchHandler handles PokeLab ID research requests.
 type ResearchHandler struct {
 	researchService *services.ResearchService
+	deckGenerator   *services.DeckGenerator
+	ragService      *services.RAGService
+	deckAnalyzer    *services.DeckAnalyzer
 }
 
 // NewResearchHandler creates a new ResearchHandler.
-func NewResearchHandler(researchService *services.ResearchService) *ResearchHandler {
-	return &ResearchHandler{researchService: researchService}
+func NewResearchHandler(researchService *services.ResearchService, deckGenerator *services.DeckGenerator, ragService *services.RAGService) *ResearchHandler {
+	return &ResearchHandler{researchService: researchService, deckGenerator: deckGenerator, ragService: ragService, deckAnalyzer: services.NewDeckAnalyzer(researchService.DB(), researchService.AI())}
 }
 
 // GetRecommendations returns meta deck recommendations based on a user's collection.
@@ -53,7 +57,10 @@ func (h *ResearchHandler) GetDeckGap(c *gin.Context) {
 	}
 
 	collectionID := c.Query("collection_id")
-	deckID := c.Query("deck_id")
+	deckID := c.Param("id")
+	if deckID == "" {
+		deckID = c.Query("deck_id")
+	}
 	if deckID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "deck_id is required"})
 		return
@@ -84,7 +91,10 @@ func (h *ResearchHandler) GetDeckAnalysis(c *gin.Context) {
 	}
 
 	collectionID := c.Query("collection_id")
-	deckID := c.Query("deck_id")
+	deckID := c.Param("id")
+	if deckID == "" {
+		deckID = c.Query("deck_id")
+	}
 	response, err := h.researchService.GetDeckAnalysis(c.Request.Context(), userID, collectionID, deckID)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -160,6 +170,105 @@ func (h *ResearchHandler) GetForecast(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+
+// GetDeckFullAnalysis returns comprehensive deck analysis with consistency, mulligan, brick, matchup.
+func (h *ResearchHandler) GetDeckFullAnalysis(c *gin.Context) {
+	deckID := c.Param("id")
+	if deckID == "" {
+		deckID = c.Query("deck_id")
+	}
+	if deckID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "deck_id is required"})
+		return
+	}
+
+	report, err := h.deckAnalyzer.AnalyzeDeck(c.Request.Context(), deckID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, report)
+}
+
+// GenerateDecks generates unique deck combinations from inventory + tournament data.
+func (h *ResearchHandler) GenerateDecks(c *gin.Context) {
+	_, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	collectionID := c.Query("collection_id")
+	if collectionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "collection_id is required"})
+		return
+	}
+
+	decks, err := h.deckGenerator.GenerateDecks(c.Request.Context(), collectionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"collection_id": collectionID,
+		"generated_decks": decks,
+		"total": len(decks),
+	})
+}
+
+
+// ResolveCardNames takes a list of card names and returns their DB data (images, prices, etc.)
+func (h *ResearchHandler) ResolveCardNames(c *gin.Context) {
+	var req struct {
+		Names []string `json:"names" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	type ResolvedCard struct {
+		Name     string  `json:"name"`
+		CardID   string  `json:"card_id"`
+		ImageURL string  `json:"image_url"`
+		Category string  `json:"category"`
+		CardType string  `json:"card_type"`
+		Rarity   string  `json:"rarity"`
+		PriceIDR float64 `json:"price_idr"`
+	}
+
+	var results []ResolvedCard
+	seen := map[string]bool{}
+
+	for _, name := range req.Names {
+		if seen[name] || name == "" {
+			continue
+		}
+		seen[name] = true
+
+		var card ResolvedCard
+		card.Name = name
+		var price sql.NullFloat64
+		err := h.researchService.DB().QueryRowContext(c.Request.Context(), `
+			SELECT c.id, COALESCE(c.image_url, ''), COALESCE(c.category, ''), COALESCE(c.card_type, ''), COALESCE(c.rarity, ''),
+				(SELECT MIN(cp.price_idr) FROM card_prices cp WHERE cp.card_id = c.id AND cp.price_idr > 0)
+			FROM cards c
+			WHERE LOWER(c.name_id) = LOWER(?) AND c.regulation_mark IN ('H','I','J')
+			ORDER BY c.id DESC LIMIT 1
+		`, name).Scan(&card.CardID, &card.ImageURL, &card.Category, &card.CardType, &card.Rarity, &price)
+		if err == nil {
+			if price.Valid {
+				card.PriceIDR = price.Float64
+			}
+			results = append(results, card)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"cards": results})
 }
 
 // AskAdvisor asks OpenRouter to explain deterministic research output.

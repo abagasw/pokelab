@@ -48,6 +48,7 @@ func (s *CollectionService) CreateCollection(ctx context.Context, userID string,
 
 // GetCollections gets all collections for a user
 func (s *CollectionService) GetCollections(ctx context.Context, userID string) ([]models.Collection, error) {
+	collections := []models.Collection{}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id, c.user_id, c.name, c.is_default, c.created_at, c.updated_at,
 		       COALESCE(SUM(ci.quantity), 0) AS total_cards,
@@ -69,7 +70,6 @@ func (s *CollectionService) GetCollections(ctx context.Context, userID string) (
 	}
 	defer rows.Close()
 
-	var collections []models.Collection
 	for rows.Next() {
 		var c models.Collection
 		var isDefault bool
@@ -401,7 +401,12 @@ func (s *CollectionService) GetPriceAlerts(ctx context.Context, userID string) (
 // GetPortfolioInsight generates deep visual analysis for a collection
 func (s *CollectionService) GetPortfolioInsight(ctx context.Context, collectionID string) (*models.PortfolioInsight, error) {
 	insight := &models.PortfolioInsight{
-		CollectionID: collectionID,
+		CollectionID:       collectionID,
+		ValueHistory:       []models.ValuePoint{},
+		TypeDistribution:   []models.TypeCount{},
+		RarityDistribution: []models.RarityCount{},
+		ExpansionProgress:  []models.ExpansionProgress{},
+		NotableMovements:   []models.PriceMovement{},
 	}
 
 	// 1. Get Value History (Mocked for now based on current items)
@@ -624,4 +629,79 @@ func (s *CollectionService) ExportCollection(ctx context.Context, collectionID s
 	default:
 		return nil, fmt.Errorf("unsupported format: %s", format)
 	}
+}
+
+// BulkImportEntry represents a single entry in a bulk import
+type BulkImportEntry struct {
+	Name     string `json:"name"`
+	Quantity int    `json:"quantity"`
+}
+
+// BulkImportResult represents the result of a bulk import
+type BulkImportResult struct {
+	Matched int      `json:"matched"`
+	Failed  int      `json:"failed"`
+	Errors  []string `json:"errors"`
+}
+
+// BulkImportByName searches for cards by name and adds them to a collection in bulk
+func (s *CollectionService) BulkImportByName(ctx context.Context, collectionID string, entries []BulkImportEntry) (*BulkImportResult, error) {
+	result := &BulkImportResult{Errors: []string{}}
+
+	for _, entry := range entries {
+		if entry.Name == "" || entry.Quantity <= 0 {
+			continue
+		}
+
+		// Search card by name - strict: exact → starts-with → contains
+		var cardID string
+		err := s.db.QueryRowContext(ctx, `
+			SELECT id FROM cards
+			WHERE LOWER(name_id) = LOWER(?) OR LOWER(name_en) = LOWER(?)
+			ORDER BY id DESC
+			LIMIT 1
+		`, entry.Name, entry.Name).Scan(&cardID)
+
+		if err == sql.ErrNoRows {
+			// Try starts-with match (prefer shorter names = closer match)
+			err = s.db.QueryRowContext(ctx, `
+				SELECT id FROM cards
+				WHERE LOWER(name_id) LIKE LOWER(?) OR LOWER(name_en) LIKE LOWER(?)
+				ORDER BY id DESC, LENGTH(name_id) ASC
+				LIMIT 1
+			`, entry.Name+"%", entry.Name+"%").Scan(&cardID)
+		}
+
+		if err == sql.ErrNoRows {
+			// Try contains match as last resort
+			err = s.db.QueryRowContext(ctx, `
+				SELECT id FROM cards
+				WHERE LOWER(name_id) LIKE LOWER(?) OR LOWER(name_en) LIKE LOWER(?)
+				ORDER BY id DESC, LENGTH(name_id) ASC
+				LIMIT 1
+			`, "%"+entry.Name+"%", "%"+entry.Name+"%").Scan(&cardID)
+		}
+
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%q - tidak ditemukan", entry.Name))
+			continue
+		}
+
+		// Add to collection (upsert)
+		req := models.CollectionRequest{
+			CardID:   cardID,
+			Quantity: entry.Quantity,
+			Condition: "NM",
+		}
+		if err := s.AddToCollection(ctx, collectionID, req); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("%q - error: %v", entry.Name, err))
+			continue
+		}
+
+		result.Matched++
+	}
+
+	return result, nil
 }

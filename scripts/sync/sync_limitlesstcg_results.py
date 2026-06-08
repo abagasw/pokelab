@@ -197,7 +197,7 @@ def sync_results(json_file: Path, db_path: Path) -> dict[str, int]:
         )
         stats["decklists"] += 1
 
-        cursor.execute("DELETE FROM deck_cards WHERE deck_id = ?", (list_id,))
+        cursor.execute("DELETE FROM deck_cards WHERE deck_id = ?", (deck_id,))
 
         total_cards = 0
         for category in ["pokemon", "trainer", "energy"]:

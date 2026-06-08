@@ -48,7 +48,10 @@ except ImportError as exc:
     print(f"Missing dependency: {exc}. Install: pip install requests beautifulsoup4")
     sys.exit(1)
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+try:
+    ROOT_DIR = Path(__file__).resolve().parents[2]
+except IndexError:
+    ROOT_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("DB_PATH", str(ROOT_DIR / "backend-go" / "pokemon_tcg.db")))
 IMAGE_DIR = Path(os.environ.get("IMAGE_DIR", str(ROOT_DIR / "frontend-astro" / "public" / "card-images")))
 POKEPEDIA_URL = os.environ.get("POKEPEDIA_SUPABASE_URL", "https://tlauakxyrxpwnwgdywum.supabase.co/rest/v1")
@@ -489,7 +492,7 @@ def scrape_decklist(url):
         elif "Energy" in line: cur = "energy"
         elif cur and re.match(r"^\d+$", line) and i+1 < len(lines):
             dl[cur].append({"count": int(line), "name": lines[i+1]})
-    return dl
+    return dl if any(dl[cat] for cat in dl) else None
 
 def sync_limitless(dry_run=False):
     log("=== LIMITLESS TCG SYNC START ===")
@@ -563,7 +566,7 @@ def sync_limitless(dry_run=False):
                 "ON CONFLICT(id) DO UPDATE SET name=excluded.name, player_name=excluded.player_name, "
                 "tournament_id=excluded.tournament_id, placement=excluded.placement",
                 (list_id, deck_id, f"Official List - Rank {rank}", player, f"limitless-{tid}", to_int(rank)))
-            cursor.execute("DELETE FROM deck_cards WHERE deck_id = ?", (list_id,))
+            cursor.execute("DELETE FROM deck_cards WHERE deck_id = ?", (deck_id,))
 
             for cat in ("pokemon", "trainer", "energy"):
                 for cd in decklist.get(cat, []) or []:

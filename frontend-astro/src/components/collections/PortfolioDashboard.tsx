@@ -57,13 +57,20 @@ export default function PortfolioDashboard({ collectionId }: { collectionId: str
 
   if (!currentInsight) return null;
 
+  // Safe defaults for array properties that may be null from API
+  const valueHistory = currentInsight.value_history ?? [];
+  const typeDistribution = currentInsight.type_distribution ?? [];
+  const expansionProgress = currentInsight.expansion_progress ?? [];
+  const notableMovements = currentInsight.notable_movements ?? [];
+  const rarityDistribution = currentInsight.rarity_distribution ?? [];
+
   // Chart Data: Value History
   const valueHistoryData = {
-    labels: currentInsight.value_history.map(h => new Date(h.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })),
+    labels: valueHistory.map(h => new Date(h.date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })),
     datasets: [
       {
         label: 'Nilai Koleksi (IDR)',
-        data: currentInsight.value_history.map(h => h.value),
+        data: valueHistory.map(h => h.value),
         fill: true,
         borderColor: 'rgb(59, 130, 246)',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -76,10 +83,10 @@ export default function PortfolioDashboard({ collectionId }: { collectionId: str
 
   // Chart Data: Type Distribution
   const typeData = {
-    labels: currentInsight.type_distribution.map(t => t.type),
+    labels: typeDistribution.map(t => t.type),
     datasets: [
       {
-        data: currentInsight.type_distribution.map(t => t.count),
+        data: typeDistribution.map(t => t.count),
         backgroundColor: [
           '#ef4444', '#3b82f6', '#22c55e', '#eab308', '#a855f7', 
           '#c2410c', '#1e293b', '#6b7280', '#f472b6', '#4f46e5'
@@ -95,26 +102,26 @@ export default function PortfolioDashboard({ collectionId }: { collectionId: str
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
           title="Total Value" 
-          value={formatIDR(currentInsight.value_history[currentInsight.value_history.length - 1].value)}
+          value={formatIDR((valueHistory.length > 0 ? valueHistory[valueHistory.length - 1].value : 0))}
           icon={TrendingUp}
           trend="+5.4%"
           trendUp={true}
         />
         <StatCard 
           title="Total Cards" 
-          value={currentInsight.type_distribution.reduce((acc, t) => acc + t.count, 0).toString()}
+          value={typeDistribution.reduce((acc, t) => acc + t.count, 0).toString()}
           icon={Package}
         />
         <StatCard 
           title="Unique Sets" 
-          value={currentInsight.expansion_progress.length.toString()}
+          value={expansionProgress.length.toString()}
           icon={Layers}
         />
         <StatCard 
           title="Top Rarity" 
-          value={currentInsight.rarity_distribution[0]?.rarity || '-'}
+          value={rarityDistribution[0]?.rarity || '-'}
           icon={Trophy}
-          subtitle={`${currentInsight.rarity_distribution[0]?.count || 0} cards`}
+          subtitle={`${rarityDistribution[0]?.count || 0} cards`}
         />
       </div>
 
@@ -185,7 +192,7 @@ export default function PortfolioDashboard({ collectionId }: { collectionId: str
             Completion Progress
           </h3>
           <div className="space-y-5">
-            {currentInsight.expansion_progress.map((exp) => (
+            {expansionProgress.map((exp) => (
               <div key={exp.code}>
                 <div className="flex items-center justify-between text-sm mb-2">
                   <div className="flex items-center gap-2">
@@ -215,7 +222,7 @@ export default function PortfolioDashboard({ collectionId }: { collectionId: str
             Notable Movements
           </h3>
           <div className="space-y-4">
-            {currentInsight.notable_movements.map((move) => (
+            {notableMovements.map((move) => (
               <div key={move.card_id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50">
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-md ${move.trend === 'up' ? 'bg-green-500/10' : 'bg-red-500/10'}`}>

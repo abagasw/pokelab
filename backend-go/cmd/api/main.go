@@ -84,7 +84,9 @@ func main() {
 	deckService := services.NewDeckService(db.DB, aiService)
 	priceService := services.NewPriceServiceWithRate(db.DB, aiService, cfg.ExchangeRate)
 	collectionService := services.NewCollectionService(db.DB, priceService)
+	ragService := services.NewRAGService(db.DB, aiService)
 	researchService := services.NewResearchService(db.DB, aiService)
+	deckGenerator := services.NewDeckGenerator(db.DB)
 	authService := services.NewAuthService(db.DB, jwtService)
 
 	// Initialize handlers
@@ -94,7 +96,7 @@ func main() {
 	priceHandler := handlers.NewPriceHandler(priceService)
 	aiHandler := handlers.NewAIHandler(cachedCardService.CardService)
 	authHandler := handlers.NewAuthHandler(authService)
-	researchHandler := handlers.NewResearchHandler(researchService)
+	researchHandler := handlers.NewResearchHandler(researchService, deckGenerator, ragService)
 	mlHandler := handlers.NewMLHandler(cfg.MLServiceURL)
 
 	// Setup router
@@ -184,6 +186,8 @@ func main() {
 			decks.GET("", deckHandler.GetDecks)
 			decks.GET("/:id", deckHandler.GetDeckByID)
 			decks.GET("/:id/decklists", deckHandler.GetDeckDecklists)
+			decks.GET("/:id/full-analysis", researchHandler.GetDeckFullAnalysis)
+			decks.POST("/resolve-cards", researchHandler.ResolveCardNames)
 			decks.POST("/build", deckHandler.BuildDeck)
 			decks.POST("/analyze", deckHandler.AnalyzeDeck)
 
@@ -227,6 +231,8 @@ func main() {
 				protectedResearch.GET("/recommendations", researchHandler.GetRecommendations)
 				protectedResearch.GET("/deck-gap", researchHandler.GetDeckGap)
 				protectedResearch.GET("/deck-analysis", researchHandler.GetDeckAnalysis)
+				protectedResearch.GET("/generate-decks", researchHandler.GenerateDecks)
+				// deck-full-analysis moved to public decks group
 			}
 		}
 
@@ -265,6 +271,7 @@ func main() {
 			collections.DELETE("/:id/items/:itemId", collectionHandler.RemoveFromCollection)
 			collections.GET("/:id/summary", collectionHandler.GetCollectionSummary)
 			collections.GET("/:id/insight", collectionHandler.GetPortfolioInsight)
+			collections.POST("/:id/bulk-import", collectionHandler.BulkImport)
 		}
 
 		// Price Alerts (protected)

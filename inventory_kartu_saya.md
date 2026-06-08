@@ -1,0 +1,353 @@
+# 🎴 Inventory Kartu Pokémon Saya
+
+Terakhir dirapikan: 2026-06-05
+
+## ex / Mega
+- [4x] Ceruledge ex
+- [1x] Clefairy Lillie ex
+- [3x] Dragapult ex
+- [1x] Exeggcute
+- [3x] Fezandipiti ex
+- [1x] Latias ex
+- [2x] Mega Charizard X ex
+- [1x] Mega Froslass ex
+- [1x] Mega Venusaur ex
+- [2x] Meganium
+- [1x] Meowth ex
+- [2x] Pecharunt ex
+- [1x] Skeledirge ex
+- [3x] Zoroark N ex
+
+## Pokémon Normal
+- [1x] Absol
+- [2x] Aegislash
+- [1x] Aipom
+- [1x] Alakazam
+- [1x] Alcremie
+- [2x] Amaura
+- [1x] Archaludon
+- [6x] Ariados
+- [2x] Armarouge
+- [1x] Aromatisse
+- [2x] Audino
+- [2x] Aurorus
+- [1x] Azumarill
+- [2x] Barbaracle
+- [4x] Bayleef
+- [1x] Bewear
+- [2x] Binacle
+- [1x] Boltund
+- [1x] Brambleghast
+- [1x] Braviary Dafin
+- [2x] Breloom
+- [2x] Bronzor
+- [2x] Budew
+- [3x] Bulbasaur
+- [1x] Buneary
+- [6x] Bunnelby
+- [2x] Capsakid
+- [1x] Carbink
+- [1x] Castform Wujud Matahari
+- [1x] Celebi
+- [6x] Ceruledge
+- [4x] Chandelure
+- [8x] Charcadet
+- [5x] Charmander
+- [9x] Charmeleon
+- [2x] Chien-Pao
+- [4x] Chikorita
+- [3x] Clefairy
+- [2x] Cottonee
+- [1x] Cresselia
+- [4x] Croagunk
+- [7x] Croconaw
+- [1x] Cryogonal
+- [1x] Cubone
+- [2x] Darmanitan
+- [2x] Darmanitan N
+- [5x] Dartrix
+- [2x] Darumaka
+- [2x] Darumaka N
+- [8x] Delcatty
+- [1x] Delibird
+- [1x] Dewgong
+- [1x] Dhelmise
+- [4x] Doublade
+- [5x] Drakloak
+- [3x] Drampa
+- [2x] Drapion
+- [4x] Dreepy
+- [2x] Dudunsparce
+- [7x] Dunsparce Dafin
+- [2x] Dunsparce Mark H HP 60
+- [2x] Dunsparce Mark I HP 70
+- [1x] Duskull
+- [2x] Emolga
+- [2x] Entei
+- [3x] Espurr
+- [3x] Eternatus
+- [7x] Fletchinder
+- [5x] Fletchling
+- [3x] Fuecoco
+- [2x] Furfrou
+- [4x] Gastly
+- [1x] Gengar
+- [1x] Gible Cynthia
+- [2x] Gligar
+- [1x] Granbull
+- [2x] Groudon
+- [4x] Haunter
+- [6x] Hawlucha
+- [2x] Heatran
+- [4x] Hippopotas
+- [2x] Hippowdon
+- [1x] Hitmontop
+- [1x] Hitmontop AR
+- [1x] Honchkrow
+- [3x] Honedge
+- [2x] Hoopa
+- [7x] Hoothoot
+- [1x] Impidimp
+- [3x] Ivysaur
+- [1x] Jigglypuff
+- [1x] Kilowattrel
+- [6x] Klefki
+- [1x] Klink N
+- [2x] Komala
+- [2x] Komala Dafin
+- [1x] Krokorok
+- [1x] Krookodile
+- [2x] Lampent
+- [1x] Landorus
+- [1x] Linoone
+- [2x] Litwick
+- [3x] Lombre
+- [1x] Lotad
+- [1x] Luxio
+- [1x] Magnemite
+- [1x] Magneton
+- [2x] Marill
+- [10x] Mawile
+- [1x] Meloetta
+- [1x] Meowstic
+- [2x] Milcery
+- [1x] Mimikyu
+- [1x] Mimikyu Tim Rocket
+- [1x] Misdreavus
+- [2x] Moltres
+- [3x] Munkidori
+- [5x] Noctowl
+- [3x] Nosepass
+- [1x] Nymble
+- [2x] Oddish
+- [8x] Oddish Erika
+- [1x] Ogerpon Topeng Teal
+- [1x] Oricorio
+- [3x] Paldean Tauros
+- [2x] Pawmi
+- [1x] Pecharunt
+- [4x] Pignite
+- [2x] Piplup
+- [2x] Poltchageist
+- [1x] Primeape
+- [1x] Probopass
+- [2x] Qia
+- [4x] Rabsca
+- [3x] Raichu
+- [1x] Ralts
+- [5x] Raticate
+- [3x] Rattata
+- [4x] Rellor
+- [2x] Reshiram
+- [1x] Reshiram N
+- [4x] Rotom Kipas
+- [5x] Rowlet
+- [5x] Rufflet Dafin
+- [2x] Salandit
+- [2x] Sandile
+- [5x] Scatterbug
+- [2x] Scorbunny
+- [6x] Seel
+- [3x] Shaymin
+- [2x] Shellos
+- [4x] Shinx
+- [3x] Shroomish
+- [4x] Skitty
+- [1x] Skorupi
+- [1x] Slither Wing
+- [1x] Slurpuff
+- [1x] Sneasel
+- [8x] Snivy
+- [1x] Snubbull
+- [2x] Spewpa
+- [5x] Spinarak
+- [2x] Spoink
+- [5x] Spritzee
+- [3x] Starly Dafin
+- [2x] Staryu
+- [5x] Swinub
+- [5x] Swirlix
+- [1x] Talonflame
+- [1x] Tangela
+- [3x] Tangela Erika
+- [1x] Tapu Bulu
+- [2x] Tatsugiri
+- [1x] Tepig
+- [1x] Totodile
+- [1x] Toxel
+- [2x] Toxicroak
+- [1x] Trapinch
+- [5x] Turtonator
+- [2x] Tyrantrum
+- [2x] Tyrunt
+- [1x] Vibrava
+- [1x] Vileplume
+- [2x] Vivillon
+- [6x] Volcanion
+- [1x] Volcarona
+- [1x] Wattrel
+- [1x] Wattrel Mistika
+- [1x] Weavile
+- [5x] Weepinbell Erika
+- [1x] Wooloo Hop
+- [4x] Yamper
+- [2x] Zekrom N
+- [1x] Zeraora
+- [3x] Zorua
+- [4x] Zorua N
+
+> _Dunsparce Dafin tidak dihitung sebagai basic untuk Dudunsparce biasa._
+> _Weepinbell Erika & Bellsprout Erika masuk juga sebagai Trainer (kartu Erika)._
+
+## Trainer
+- [5x] Abu Suci
+- [1x] Alat Penerima Tim Rocket
+- [1x] Ariana Tim Rocket
+- [1x] Badut
+- [3x] Balon
+- [2x] Bel Penyelamat
+- [6x] Bellsprout Erika
+- [4x] Bimbingan Penjelajah
+- [3x] Bola Listrik
+- [1x] Bola Pokémon
+- [16x] Bola Ultra
+- [2x] Briar
+- [5x] Cheren
+- [2x] Cyano
+- [3x] Dawn
+- [1x] Electabuzz
+- [1x] Emergency Board
+- [1x] Es Krim Jumbo
+- [1x] Fight Gong
+- [1x] Fosil Bulu Usang
+- [1x] Fosil Penutup Usang
+- [5x] Fosil Rahang Usang
+- [6x] Fosil Sirip Usang
+- [3x] Gelang Keberanian
+- [5x] Giovanni Tim Rocket
+- [4x] Gua Besar Zero
+- [1x] Gua Granit
+- [1x] Gunung Gravitasi
+- [1x] Heat Burner
+- [5x] Helm Punk
+- [4x] Hilda
+- [2x] Ikat Kepala Pilihan Hop
+- [4x] Istana N
+- [3x] Jejaka Garang
+- [2x] Jimat Suci
+- [4x] Judge
+- [1x] Kanaria
+- [5x] Kemurnian Hati Bianca
+- [7x] Ketetapan Hati Lillie
+- [1x] Kolosium Pertarungan
+- [2x] Kota Postwick
+- [1x] Lembah Vertigo
+- [6x] Lilac
+- [2x] Lumiose Galette
+- [3x] MC Pemeriah Acara
+- [3x] Memori Inti
+- [1x] Menara Pemantau Tim Rocket
+- [1x] Menara Pengacak
+- [1x] MJ Satu Serangan Saat Darurat
+- [2x] Moci Rantai
+- [6x] Motivasi Rosa
+- [2x] Murneau
+- [1x] Neutral Center
+- [1x] Obat Luka
+- [1x] Obat Rahasia Naga
+- [3x] Pabrik Tim Rocket
+- [3x] Palu Luar Biasa
+- [1x] Pelayan
+- [4x] Pemberat Kekuatan Cynthia
+- [2x] Pemukul Energi
+- [2x] Perintah Boss
+- [8x] Permen Langka
+- [1x] Peselancar
+- [2x] Petrel Tim Rocket
+- [1x] Petualangan Ethan
+- [5x] Plot N
+- [6x] Poffin Bersahabat
+- [5x] Pokégear 3.0
+- [2x] Pokémon Catcher
+- [5x] PokéPad
+- [1x] Poppy
+- [5x] PP Up N
+- [1x] Protein Kekuatan
+- [1x] Proton Tim Rocket
+- [1x] Satu Langkah Grimsley
+- [2x] Seila
+- [5x] Semangat Tarung Iris
+- [2x] Set Penangkap Serangga
+- [4x] Sinyal Mega
+- [1x] Sisa Makanan
+- [2x] Sisik Sangat Tabal
+- [5x] Staravia Dafin
+- [2x] Suguri
+- [4x] Taman Misteri
+- [1x] Tambang Saat Malam
+- [5x] Tandu Malam
+- [2x] Tara
+- [2x] Taragon
+- [5x] Teknik Rahasia Janine
+- [4x] Teman-Teman Paldea
+- [2x] Terastal Orb
+- [1x] Terompet Kaca
+- [2x] Tool Scrapper
+- [6x] Tukar Pokémon
+- [4x] Urbain
+- [2x] Victreebel Erika
+- [2x] Weepinbell Erika
+- [2x] Wonder Parch SR
+- [4x] Wonder Patch
+
+## Energy
+- [14x] Energi Api
+- [10x] Energi Dark
+- [15x] Energi Daun
+- [10x] Energi Physic
+- [8x] Energi Recycle
+- [1x] Energi Tim Rocket
+- [4x] Pemulihan Energi
+- [3x] Pengalih Energi
+
+## ACE SPEC
+- [1x] Perfect Mixer
+- [2x] Scramble Switch
+- [1x] Siklon Pengangkat ACE
+- [1x] Neutral Center
+
+## Catatan Rapikan (2026-06-05)
+
+**Perubahan dari sesi ini (digabung dari daftar bawah ke inventori utama):**
+- Kartu baru ditambahkan: Latias ex, Clefairy Lillie ex, Rellor, Rabsca, Rotom Kipas, Shaymin, Qia,
+  Hitmontop AR, Tangela Erika, Raichu, dan sejumlah Trainer baru (Helm Punk, Motivasi Rosa, Briar,
+  Gua Besar Zero, Seila, Suguri, Cyano, Wonder Patch, Taragon, dll.)
+- Duplikat digabung: Ceruledge ex, Ceruledge, Charcadet, Charmeleon, Fletchinder, Croconaw,
+  Volcanion, Ariados, Spinarak, Weepinbell Erika, Bellsprout Erika, Oddish Erika, Rowlet, Dartrix,
+  Shinx, Klefki, Drampa, Fletchling, Bunnelby, Raticate, Hawlucha, Spritzee, Mawile, Dunsparce Dafin,
+  Hilda, Giovanni Tim Rocket, Abu Suci, Sinyal Mega, PokéPad, PP Up N, Tandu Malam, Tukar Pokémon, dll.
+- Typo diperbaiki: `Fleetchinder` → Fletchinder, `Daffin` → Dafin, `Fosing`/`Using` → Fosil/Usang,
+  `Lilie` → Lillie, `Roket` konsisten → Rocket.
+- Energy: Energi Recycle +3, Pemulihan Energi +1, Pengalih Energi +1, Energi Tim Rocket baru (1x).
+- ACE SPEC: Siklon Pengangkat ACE baru (1x).
+- **Catatan deckbuilding tetap berlaku:** Dunsparce Dafin tidak dihitung sebagai basic untuk Dudunsparce biasa.

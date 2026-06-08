@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS decklists (
     tie_count INTEGER DEFAULT 0,
     points INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
+    FOREIGN KEY (deck_id) REFERENCES decklists(id) ON DELETE CASCADE
 );
 
 -- Deck cards table
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS deck_cards (
     card_id TEXT NOT NULL,
     count INTEGER NOT NULL DEFAULT 1,
     is_pokemon BOOLEAN DEFAULT FALSE,
-    FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE,
+    FOREIGN KEY (deck_id) REFERENCES decklists(id) ON DELETE CASCADE,
     FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
 );
 

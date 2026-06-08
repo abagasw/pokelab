@@ -49,8 +49,8 @@ export const useCollectionStore = create<CollectionState>()(
         set({ loading: true, error: null });
         try {
           const response = await api.getCollections();
-          if (response.success && response.data) {
-            set({ collections: response.data, loading: false });
+          if (response.success) {
+            set({ collections: response.data || [], loading: false });
           } else {
             set({ error: response.error || 'Failed to fetch collections', loading: false });
           }

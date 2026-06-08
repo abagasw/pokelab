@@ -734,6 +734,42 @@ class ApiClient {
     }
   }
 
+  async resolveCardNames(names: string[]): Promise<ApiResponse<any>> {
+    try {
+      const data = await this.post<any>('/decks/resolve-cards', { names });
+      return this.wrapResponse(data);
+    } catch (error: any) {
+      return this.wrapError(error);
+    }
+  }
+
+  async getDeckFullAnalysis(deckId: string): Promise<ApiResponse<any>> {
+    try {
+      const data = await this.get<any>(`/decks/${deckId}/full-analysis`);
+      return this.wrapResponse(data);
+    } catch (error: any) {
+      return this.wrapError(error);
+    }
+  }
+
+  async generateDecks(collectionId: string): Promise<ApiResponse<any>> {
+    try {
+      const data = await this.get<any>(`/research/generate-decks`, { params: { collection_id: collectionId } });
+      return this.wrapResponse(data);
+    } catch (error: any) {
+      return this.wrapError(error);
+    }
+  }
+
+  async bulkImportByName(collectionId: string, entries: { name: string; quantity: number }[]): Promise<ApiResponse<{ matched: number; failed: number; errors: string[] }>> {
+    try {
+      const data = await this.post<{ matched: number; failed: number; errors: string[] }>(`/collections/${collectionId}/bulk-import`, { entries });
+      return this.wrapResponse(data);
+    } catch (error: any) {
+      return this.wrapError(error);
+    }
+  }
+
   // Alerts
   async getAlerts(): Promise<ApiResponse<any[]>> {
     try {

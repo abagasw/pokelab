@@ -328,6 +328,9 @@ func decklistSearchTerm(value string) string {
 
 // getDecklistCards gets cards for a decklist
 func (s *DeckService) getDecklistCards(ctx context.Context, decklistID string) ([]models.DeckCard, error) {
+	// deck_cards.deck_id may be either the decklist ID or the parent deck ID
+	// Try both: decklist ID first, then strip "list-" prefix for deck ID
+	deckID := strings.TrimPrefix(decklistID, "list-")
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT dc.id, dc.deck_id, dc.card_id, dc.count, dc.is_pokemon,
 		       COALESCE(c.name_id, dc.card_id), COALESCE(c.category, ''),
@@ -335,9 +338,9 @@ func (s *DeckService) getDecklistCards(ctx context.Context, decklistID string) (
 		       (SELECT MIN(price_idr) FROM card_prices cp WHERE cp.card_id = dc.card_id AND cp.price_idr IS NOT NULL AND cp.price_idr > 0)
 		FROM deck_cards dc
 		LEFT JOIN cards c ON dc.card_id = c.id
-		WHERE dc.deck_id = ?
+		WHERE dc.deck_id IN (?, ?)
 		ORDER BY dc.is_pokemon DESC, c.category, c.name_id
-	`, decklistID)
+	`, decklistID, deckID)
 	if err != nil {
 		return nil, err
 	}

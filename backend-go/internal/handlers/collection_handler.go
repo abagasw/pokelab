@@ -403,6 +403,52 @@ func (h *CollectionHandler) GetPortfolioInsight(c *gin.Context) {
 	c.JSON(http.StatusOK, insight)
 }
 
+
+
+// BulkImport godoc
+// @Summary Bulk import cards to collection by name
+// @Description Search cards by name and add them to collection in bulk
+// @Tags collections
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Collection ID"
+// @Param request body object true "Bulk import entries"
+// @Success 200 {object} services.BulkImportResult
+// @Router /collections/{id}/bulk-import [post]
+func (h *CollectionHandler) BulkImport(c *gin.Context) {
+	collectionID := c.Param("id")
+	if collectionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "collection ID required"})
+		return
+	}
+	userID, exists := middleware.GetUserID(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if _, err := h.collectionService.GetCollectionForUser(c.Request.Context(), collectionID, userID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Collection not found"})
+		return
+	}
+
+	var req struct {
+		Entries []services.BulkImportEntry `json:"entries" binding:"required,min=1"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := h.collectionService.BulkImportByName(c.Request.Context(), collectionID, req.Entries)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 // GetPriceAlerts godoc
 // @Summary Get price alerts
 // @Description Get all price alerts for the current user

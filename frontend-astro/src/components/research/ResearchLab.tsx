@@ -36,6 +36,8 @@ export default function ResearchLab({ mode }: ResearchLabProps) {  const { authR
   const [targetDeckId, setTargetDeckId] = useState('');
   const [category, setCategory] = useState('');
   const [question, setQuestion] = useState('Jelaskan deck terbaik dari inventory saya, missing card prioritas, dan matchup yang perlu dilatih.');
+  const [generatedDecks, setGeneratedDecks] = useState<any[]>([]);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => { if (typeof window !== 'undefined') { const t = new URLSearchParams(window.location.search).get('target'); if (t) setTargetDeckId(t); } }, []);
   useEffect(() => { fetchDecks({ limit: 30 }); fetchForecast('', 500); }, [fetchDecks, fetchForecast]);
@@ -43,6 +45,19 @@ export default function ResearchLab({ mode }: ResearchLabProps) {  const { authR
   useEffect(() => { if (!collectionId && collections.length > 0) setCollectionId(collections[0].id); }, [collectionId, collections]);
   useEffect(() => { if (!targetDeckId && decks.length > 0) setTargetDeckId(decks[0].id); }, [decks, targetDeckId]);
   useEffect(() => { if (isAuthenticated && collectionId && (mode === 'dashboard' || mode === 'recommendations')) fetchRecommendations(collectionId); }, [collectionId, isAuthenticated, mode, fetchRecommendations]);
+
+  const handleGenerateDecks = async () => {
+    if (!collectionId) return;
+    setGenerating(true);
+    try {
+      const { api } = await import('@api/client');
+      const response = await api.generateDecks(collectionId);
+      if (response.success && response.data?.generated_decks) {
+        setGeneratedDecks(response.data.generated_decks);
+      }
+    } catch { /* ignore */ }
+    finally { setGenerating(false); }
+  };
   useEffect(() => { if (targetDeckId && mode === 'anti-meta') fetchAntiMeta(targetDeckId); }, [targetDeckId, mode, fetchAntiMeta]);
   useEffect(() => { if (mode === 'predictions') fetchForecast(category, 500); }, [category, mode, fetchForecast]);
 
@@ -52,7 +67,7 @@ export default function ResearchLab({ mode }: ResearchLabProps) {  const { authR
     <LabShell mode={mode}>
       {error && <div className="border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive rounded-lg">{error}</div>}
       {mode === 'dashboard' && <DashboardView loading={loading} decksLoading={decksLoading} isAuthenticated={isAuthenticated} decks={decks} recommendations={recommendations} predictions={predictions} forecast={forecast} bestRecommendation={bestRec} />}
-      {mode === 'recommendations' && (isAuthenticated ? <RecommendationsView loading={loading} collectionId={collectionId} recommendations={recommendations} advisor={advisor?.answer} question={question} setQuestion={setQuestion} onAsk={() => askAdvisor(question, JSON.stringify(recommendations.slice(0, 3)))} /> : <LoginNeededPanel />)}
+      {mode === 'recommendations' && (isAuthenticated ? <RecommendationsView loading={loading} collectionId={collectionId} recommendations={recommendations} generatedDecks={generatedDecks} generating={generating} onGenerate={handleGenerateDecks} advisor={advisor?.answer} question={question} setQuestion={setQuestion} onAsk={() => askAdvisor(question, JSON.stringify(recommendations.slice(0, 3)))} /> : <LoginNeededPanel />)}
       {mode === 'anti-meta' && <AntiMetaView loading={loading} decks={decks} targetDeckId={targetDeckId} setTargetDeckId={setTargetDeckId} antiMeta={antiMeta} />}
       {mode === 'predictions' && <PredictionsView loading={loading} category={category} setCategory={setCategory} predictions={predictions} forecast={forecast} />}
     </LabShell>
@@ -308,23 +323,29 @@ function DashboardView({ loading, decksLoading, isAuthenticated, decks, recommen
     </div>
   );
 }
-function RecommendationsView({ loading, collectionId, recommendations, advisor, question, setQuestion, onAsk }: {
+function RecommendationsView({ loading, collectionId, recommendations, generatedDecks, generating, onGenerate, advisor, question, setQuestion, onAsk }: {
   loading: boolean; collectionId: string; recommendations: ResearchDeckRecommendation[];
+  generatedDecks: any[]; generating: boolean; onGenerate: () => void;
   advisor?: string; question: string; setQuestion: (v: string) => void; onAsk: () => void;
 }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-3 md:grid-cols-3">
-        <StatCard icon={Target} label="Total Matches" value={recommendations.length} color="blue" />
-        <StatCard icon={Heart} label="High Priority Cards" value={recommendations.reduce((s, r) => s + r.missing_cards.filter(c => c.buy_priority === 'high').length, 0)} color="amber" />
-        <StatCard icon={Zap} label="Est. Top 3 Cost" value={formatIDR(recommendations.slice(0, 3).reduce((s, r) => s + r.estimated_upgrade_cost_idr, 0))} color="green" />
+        <StatCard icon={Target} label="Tournament Matches" value={recommendations.length} color="blue" />
+        <StatCard icon={Heart} label="Generated Decks" value={generatedDecks.length} color="amber" />
+        <StatCard icon={Zap} label="Unique Archetypes" value={new Set([...recommendations.map(r => r.archetype), ...generatedDecks.map((d: any) => d.archetype)]).size} color="green" />
       </div>
-      {loading && recommendations.length === 0 ? <LoadingBlock /> : (
-        <div className="space-y-4">
-          {recommendations.slice(0, 8).map((rec, i) => <DeckRecommendationCard key={rec.deck_id} rec={rec} rank={i + 1} />)}
-          {recommendations.length === 0 && <EmptyBlock text="No recommendations. Add cards to your collection first." />}
-        </div>
-      )}
+
+      {/* Deck Generator + Tournament Matches in tabs */}
+      <DeckGeneratorSection
+        generatedDecks={generatedDecks}
+        generating={generating}
+        onGenerate={onGenerate}
+        recommendations={recommendations}
+        loading={loading}
+      />
+
+
       <div className="rounded-xl border bg-card p-5">
         <div className="mb-3 flex items-center gap-2"><Sparkles className="h-5 w-5 text-primary" /><h2 className="text-lg font-bold">AI Deck Advisor</h2></div>
         <p className="mb-3 text-sm text-muted-foreground">Ask about your best deck options, missing card priorities, and matchup training.</p>
@@ -379,6 +400,207 @@ function DeckRecommendationCard({ rec, rank }: { rec: ResearchDeckRecommendation
         </div>
       )}
     </div>
+  );
+}
+
+
+function DeckGeneratorSection({ generatedDecks, generating, onGenerate, recommendations, loading }: {
+  generatedDecks: any[]; generating: boolean; onGenerate: () => void;
+  recommendations: ResearchDeckRecommendation[]; loading: boolean;
+}) {
+  const [tab, setTab] = useState<'generated' | 'tournament'>('generated');
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      {/* Tab Header */}
+      <div className="flex border-b bg-muted/30">
+        <button
+          onClick={() => setTab('generated')}
+          className={`flex-1 px-4 py-3 text-sm font-bold transition-colors ${tab === 'generated' ? 'bg-background text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <Sparkles className="inline mr-2 h-4 w-4" />
+          Generated Decks {generatedDecks.length > 0 && `(${generatedDecks.length})`}
+        </button>
+        <button
+          onClick={() => setTab('tournament')}
+          className={`flex-1 px-4 py-3 text-sm font-bold transition-colors ${tab === 'tournament' ? 'bg-background text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <Target className="inline mr-2 h-4 w-4" />
+          Tournament Matches {recommendations.length > 0 && `(${recommendations.length})`}
+        </button>
+      </div>
+
+      <div className="p-5">
+        {/* Generate Button */}
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-muted-foreground">
+            {tab === 'generated'
+              ? 'Generate deck unik dari inventory + data tournament. Klik Generate untuk membuat deck baru.'
+              : 'Deck dari turnamen yang paling cocok dengan inventory kamu.'}
+          </p>
+          {tab === 'generated' && (
+            <button onClick={onGenerate} disabled={generating}
+              className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+              {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              {generating ? 'Generating...' : 'Generate Decks'}
+            </button>
+          )}
+        </div>
+
+        {/* Content */}
+        {tab === 'generated' && (
+          <div className="space-y-3">
+            {generatedDecks.length > 0 ? generatedDecks.map((deck: any, i: number) => (
+              <GeneratedDeckCard key={i} deck={deck} rank={i + 1} />
+            )) : (
+              <div className="py-10 text-center text-sm text-muted-foreground">
+                {generating ? 'Generating...' : 'Klik Generate Decks untuk membuat deck dari inventory kamu.'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'tournament' && (
+          <div className="space-y-3">
+            {loading && recommendations.length === 0 ? <LoadingBlock /> : (
+              recommendations.length > 0 ? recommendations.slice(0, 10).map((rec, i) => (
+                <DeckRecommendationCard key={rec.deck_id} rec={rec} rank={i + 1} />
+              )) : (
+                <EmptyBlock text="No tournament matches. Import more cards to improve matching." />
+              )
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GeneratedDeckCard({ deck, rank }: { deck: any; rank: number }) {
+  const completeness = deck.completeness_pct || 0;
+  const missing = deck.missing_cards || [];
+  const cards = deck.cards || [];
+  const pokemon = cards.filter((c: any) => c.category === 'Pokemon');
+  const trainers = cards.filter((c: any) => c.category === 'Trainer' || c.category === '');
+  const energy = cards.filter((c: any) => c.category === 'Energy');
+
+  return (
+    <details className="rounded-lg border border-primary/20 bg-background overflow-hidden group">
+      <summary className="p-4 cursor-pointer hover:bg-muted/20 transition-colors list-none [&::-webkit-details-marker]:hidden">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/10 text-xs font-bold text-amber-400">#{rank}</span>
+              <span className="truncate font-bold">{deck.name}</span>
+              <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary uppercase">Hybrid</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">{deck.description}</p>
+            {deck.strengths && deck.strengths.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {deck.strengths.map((s: string, i: number) => <span key={i} className="rounded-full border border-green-500/25 bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-400">{s}</span>)}
+              </div>
+            )}
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-xl font-black text-primary">{completeness}%</p>
+            <p className="text-[10px] text-muted-foreground">complete</p>
+          </div>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+          <div className={`h-full rounded-full transition-all ${completeness >= 80 ? 'bg-green-500' : completeness >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: completeness + '%' }} />
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-4">
+          <div className="rounded-md border bg-card p-2"><p className="text-[10px] text-muted-foreground">Pokemon</p><p className="text-sm font-bold">{pokemon.length}</p></div>
+          <div className="rounded-md border bg-card p-2"><p className="text-[10px] text-muted-foreground">Trainer</p><p className="text-sm font-bold">{trainers.length}</p></div>
+          <div className="rounded-md border bg-card p-2"><p className="text-[10px] text-muted-foreground">Missing</p><p className="text-sm font-bold">{missing.length}</p></div>
+          <div className="rounded-md border bg-card p-2"><p className="text-[10px] text-muted-foreground">Est. Cost</p><p className="text-sm font-bold">{formatIDR(deck.estimated_cost_idr || 0)}</p></div>
+        </div>
+        <div className="mt-3">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const id = 'gen-' + Date.now();
+              try { localStorage.setItem('pokelab_generated_deck_' + id, JSON.stringify(deck)); } catch {}
+              window.location.href = '/decks/detail?generated=' + id;
+            }}
+            className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            Buka Detail Lengkap
+          </button>
+        </div>
+      </summary>
+
+      <div className="border-t p-4 space-y-4">
+        {/* Pokemon section */}
+        {pokemon.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Pokemon ({pokemon.reduce((s: number, c: any) => s + c.count, 0)})</h4>
+            <div className="space-y-1">
+              {pokemon.map((c: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className="font-mono w-8 text-right text-primary font-bold">{c.count}x</span>
+                  <span className="flex-1 font-medium">{c.card_name}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${c.is_owned ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                    {c.is_owned ? 'owned' : 'need'}
+                  </span>
+                  <span className="text-xs text-muted-foreground capitalize">{c.source}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Trainer section */}
+        {trainers.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Trainer ({trainers.reduce((s: number, c: any) => s + c.count, 0)})</h4>
+            <div className="grid gap-1 sm:grid-cols-2">
+              {trainers.map((c: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className="font-mono w-8 text-right text-primary font-bold">{c.count}x</span>
+                  <span className="flex-1 truncate">{c.card_name}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${c.is_owned ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                    {c.is_owned ? 'owned' : 'need'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Energy section */}
+        {energy.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Energy ({energy.reduce((s: number, c: any) => s + c.count, 0)})</h4>
+            <div className="space-y-1">
+              {energy.map((c: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className="font-mono w-8 text-right text-primary font-bold">{c.count}x</span>
+                  <span className="flex-1">{c.card_name}</span>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${c.is_owned ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                    {c.is_owned ? 'owned' : 'need'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Missing cards summary */}
+        {missing.length > 0 && (
+          <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
+            <p className="text-xs font-semibold text-amber-400 mb-1">Missing Cards ({missing.length})</p>
+            <div className="flex flex-wrap gap-1">
+              {missing.map((m: any, i: number) => (
+                <span key={i} className="text-xs bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+                  {m.card_name} x{m.missing_count}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 

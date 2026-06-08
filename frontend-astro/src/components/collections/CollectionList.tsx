@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlaskConical, Layers3, Loader2, Package, Plus, Sparkles, Wallet } from 'lucide-react';
+import { FlaskConical, Layers3, Loader2, Package, Plus, Search, Sparkles, Trash2, Wallet, X } from 'lucide-react';
 import { useCollectionStore } from '@stores/collectionStore';
 import { useAuthStore } from '@stores/authStore';
 import { formatIDR } from '@utils/formatters';
@@ -18,11 +18,18 @@ const starterInventory = [
 ];
 
 export default function CollectionList() {
-  const { collections, fetchCollections, createCollection, addToCollection, loading, error } = useCollectionStore();
+  const { collections, fetchCollections, createCollection, deleteCollection, addToCollection, loading, error } = useCollectionStore();
   const { authReady, isAuthenticated } = useAuthStore();
   const [newCollectionName, setNewCollectionName] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [seedingId, setSeedingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [addCardCollectionId, setAddCardCollectionId] = useState<string | null>(null);
+  const [cardSearchQuery, setCardSearchQuery] = useState('');
+  const [cardSearchResults, setCardSearchResults] = useState<any[]>([]);
+  const [cardSearching, setCardSearching] = useState(false);
+  const [addingCardId, setAddingCardId] = useState<string | null>(null);
 
   useEffect(() => {
     if (authReady && isAuthenticated) {
@@ -56,6 +63,51 @@ export default function CollectionList() {
     }
     await fetchCollections();
     setSeedingId(null);
+  };
+
+  const handleDelete = async (collectionId: string) => {
+    setDeletingId(collectionId);
+    const success = await deleteCollection(collectionId);
+    if (success) {
+      setConfirmDeleteId(null);
+      await fetchCollections();
+    }
+    setDeletingId(null);
+  };
+
+  const handleSearchCards = async (query: string) => {
+    setCardSearchQuery(query);
+    if (query.length < 2) {
+      setCardSearchResults([]);
+      return;
+    }
+    setCardSearching(true);
+    try {
+      const { api } = await import('@api/client');
+      const response = await api.searchCards({ q: query, limit: 8 });
+      if (response.success && response.data?.cards) {
+        setCardSearchResults(response.data.cards);
+      } else {
+        setCardSearchResults([]);
+      }
+    } catch {
+      setCardSearchResults([]);
+    } finally {
+      setCardSearching(false);
+    }
+  };
+
+  const handleAddCard = async (cardId: string) => {
+    if (!addCardCollectionId) return;
+    setAddingCardId(cardId);
+    try {
+      await addToCollection(addCardCollectionId, { card_id: cardId, quantity: 1, condition: 'NM' });
+      await fetchCollections();
+      setCardSearchQuery('');
+      setCardSearchResults([]);
+    } finally {
+      setAddingCardId(null);
+    }
   };
 
   if (!authReady) {
@@ -179,6 +231,13 @@ export default function CollectionList() {
                       <FlaskConical className="mr-2 h-4 w-4" />
                       Analisis deck
                     </a>
+                    <button
+                      onClick={() => { setAddCardCollectionId(collection.id); setCardSearchQuery(''); setCardSearchResults([]); }}
+                      className="inline-flex h-9 items-center rounded-md border border-blue-500/30 bg-blue-500/10 px-3 text-sm font-semibold text-blue-400 hover:bg-blue-500/15"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Tambah Kartu
+                    </button>
                     {isEmpty && (
                       <button
                         onClick={() => handleSeed(collection.id)}
@@ -189,6 +248,33 @@ export default function CollectionList() {
                         Isi sample meta
                       </button>
                     )}
+                    {confirmDeleteId === collection.id ? (
+                      <div className="inline-flex items-center gap-2">
+                        <span className="text-xs text-destructive font-medium">Hapus?</span>
+                        <button
+                          onClick={() => handleDelete(collection.id)}
+                          disabled={deletingId === collection.id}
+                          className="inline-flex h-9 items-center rounded-md bg-destructive px-3 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60"
+                        >
+                          {deletingId === collection.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Trash2 className="mr-1 h-3 w-3" />}
+                          Ya, Hapus
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-semibold text-muted-foreground hover:bg-accent"
+                        >
+                          Batal
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(collection.id)}
+                        className="inline-flex h-9 items-center rounded-md border border-destructive/30 bg-destructive/10 px-3 text-sm font-semibold text-destructive hover:bg-destructive/15"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Hapus
+                      </button>
+                    )}
                   </div>
                 </article>
               );
@@ -196,6 +282,66 @@ export default function CollectionList() {
           </div>
         )}
       </section>
+
+      {/* Add Card Search Modal */}
+      {addCardCollectionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setAddCardCollectionId(null)}>
+          <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-xl mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">Tambah Kartu ke Koleksi</h3>
+              <button onClick={() => setAddCardCollectionId(null)} className="p-1 rounded-md hover:bg-accent">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                value={cardSearchQuery}
+                onChange={(e) => handleSearchCards(e.target.value)}
+                placeholder="Cari nama kartu (contoh: Pikachu, Charizard)..."
+                className="h-10 w-full rounded-md border border-input bg-background pl-10 pr-3 text-sm"
+                autoFocus
+              />
+            </div>
+            {cardSearching && (
+              <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Mencari kartu...
+              </div>
+            )}
+            {!cardSearching && cardSearchQuery.length >= 2 && cardSearchResults.length === 0 && (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                Kartu tidak ditemukan. Coba kata kunci lain.
+              </div>
+            )}
+            <div className="max-h-80 space-y-2 overflow-y-auto">
+              {cardSearchResults.map((card) => (
+                <div key={card.id} className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+                  <div className="h-12 w-9 flex-shrink-0 overflow-hidden rounded border border-border bg-muted">
+                    {card.image_url ? (
+                      <img src={card.image_url} alt={card.name_id} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xs">🃏</div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{card.name_id}</p>
+                    <p className="text-xs text-muted-foreground">{card.expansion_code} {card.rarity ? `- ${card.rarity}` : ''} {card.collector_number ? `#${card.collector_number}` : ''}</p>
+                  </div>
+                  <button
+                    onClick={() => handleAddCard(card.id)}
+                    disabled={addingCardId === card.id}
+                    className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                  >
+                    {addingCardId === card.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

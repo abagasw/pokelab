@@ -5,7 +5,7 @@ services:
       args:
         PUBLIC_API_URL: /api/v1
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-127.0.0.1:3000:80}"
     volumes:
       - ${CARD_IMAGES_DIR:-./frontend-astro/public/card-images}:/usr/share/nginx/html/card-images:ro
     depends_on:
@@ -28,7 +28,7 @@ services:
       EXCHANGE_RATE: ${EXCHANGE_RATE:-16400}
       DATA_DIR: /app/seed-data
     ports:
-      - "${BACKEND_PORT:-8080}:8080"
+      - "${BACKEND_PORT:-127.0.0.1:8080:8080}"
     volumes:
       - ${DB_DIR:-./backend-go}:/app/data
       - ./data:/app/seed-data:ro
@@ -95,9 +95,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
       ofelia.job-run.sync-full.schedule: "0 6 * * *"
-      ofelia.job-run.sync-full.container: "pokemon-sync-1"
+      ofelia.job-run.sync-full.container: "pokelab-sync-1"
       ofelia.job-run.sync-tournaments.schedule: "0 */12 * * *"
-      ofelia.job-run.sync-tournaments.container: "pokemon-sync-1"
+      ofelia.job-run.sync-tournaments.container: "pokelab-sync-1"
       ofelia.job-run.sync-tournaments.command: "--tournaments-only"
     restart: unless-stopped
 

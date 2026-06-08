@@ -4,7 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"fmt"
+
 	"math"
 	"pokemon-tcg-indonesia/internal/models"
 	"sort"
@@ -21,6 +22,12 @@ type ResearchService struct {
 func NewResearchService(db *sql.DB, aiService *AIService) *ResearchService {
 	return &ResearchService{db: db, aiService: aiService}
 }
+
+// DB returns the database connection.
+func (s *ResearchService) DB() *sql.DB { return s.db }
+
+// AI returns the AI service.
+func (s *ResearchService) AI() *AIService { return s.aiService }
 
 // GetRecommendations compares a user's collection against meta decklists.
 func (s *ResearchService) GetRecommendations(ctx context.Context, userID, collectionID string) (*models.ResearchRecommendationsResponse, error) {
@@ -200,7 +207,8 @@ func (s *ResearchService) GetPredictions(ctx context.Context, category string, l
 	`
 
 	rows, err := s.db.QueryContext(ctx, query, category, category, category, limit)
-	if err != nil {
+	if err != nil {
+
 		return nil, err
 	}
 	defer rows.Close()
@@ -303,8 +311,10 @@ func (s *ResearchService) enrichCardPrediction(p models.MetaPrediction, totalDec
 	return p
 }
 
-func (s *ResearchService) forecastDecks(ctx context.Context, limit int) ([]models.MetaDeckPrediction, models.ResearchLabStats, error) {
-	decks, err := s.loadMetaDecks(ctx, 500)
+func (s *ResearchService) forecastDecks(ctx context.Context, limit int) ([]models.MetaDeckPrediction, models.ResearchLabStats, error) {
+
+	decks, err := s.loadMetaDecks(ctx, 500)
+
 	if err != nil {
 		return nil, models.ResearchLabStats{}, err
 	}
@@ -337,7 +347,8 @@ func (s *ResearchService) forecastDecks(ctx context.Context, limit int) ([]model
 		group.top8 += deck.Top8Count
 		totalTournamentSignals += deck.TournamentCount
 	}
-
+
+
 	predictions := make([]models.MetaDeckPrediction, 0, len(groups))
 	for _, group := range groups {
 		sort.SliceStable(group.decks, func(i, j int) bool {
@@ -550,38 +561,54 @@ func (s *ResearchService) ensureCollectionOwner(ctx context.Context, userID, col
 }
 
 func (s *ResearchService) loadCollectionInventory(ctx context.Context, collectionID string) (map[string]int, error) {
+	// Index by card NAME (name_id) so different printings of the same card all match deck requirements
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT card_id, COALESCE(SUM(quantity), 0)
-		FROM collection_items
-		WHERE collection_id = ?
-		GROUP BY card_id
+		SELECT c.name_id, COALESCE(SUM(ci.quantity), 0)
+		FROM collection_items ci
+		JOIN cards c ON ci.card_id = c.id
+		WHERE ci.collection_id = ?
+		GROUP BY c.name_id
 	`, collectionID)
-	if err != nil {
+	if err != nil {
+
 		return nil, err
 	}
 	defer rows.Close()
 
 	inventory := map[string]int{}
 	for rows.Next() {
-		var cardID string
+		var cardName string
 		var quantity int
-		if err := rows.Scan(&cardID, &quantity); err == nil {
-			inventory[cardID] = quantity
+		if err := rows.Scan(&cardName, &quantity); err == nil {
+			inventory[cardName] = quantity
 		}
 	}
 	return inventory, nil
 }
 
-func (s *ResearchService) loadMetaDecks(ctx context.Context, limit int) ([]models.Deck, error) {
+func (s *ResearchService) loadMetaDecks(ctx context.Context, limit int) ([]models.Deck, error) {
+
+	// Load best deck per archetype for diversity using window function
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, COALESCE(archetype, ''), COALESCE(format, 'Standard'),
-		       COALESCE(tournament_count, 0), COALESCE(win_count, 0), COALESCE(top8_count, 0)
-		FROM decks
-		WHERE user_id IS NULL
-		ORDER BY tournament_count DESC, win_count DESC, top8_count DESC, name ASC
+		SELECT id, name, archetype, format, tournament_count, win_count, top8_count
+		FROM (
+			SELECT id, name, COALESCE(archetype, '') as archetype, COALESCE(format, 'Standard') as format,
+			       COALESCE(tournament_count, 0) as tournament_count,
+			       COALESCE(win_count, 0) as win_count,
+			       COALESCE(top8_count, 0) as top8_count,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY COALESCE(archetype, name)
+			           ORDER BY tournament_count DESC, win_count DESC, top8_count DESC
+			       ) as rn
+			FROM decks
+			WHERE user_id IS NULL
+		)
+		WHERE rn = 1
+		ORDER BY tournament_count DESC, win_count DESC, top8_count DESC
 		LIMIT ?
 	`, limit)
-	if err != nil {
+	if err != nil {
+
 		return nil, err
 	}
 	defer rows.Close()
@@ -644,7 +671,8 @@ func (s *ResearchService) loadDeckCards(ctx context.Context, deckOrListID string
 		LEFT JOIN cards c ON c.id = dc.card_id
 		WHERE dc.deck_id = ?
 	`, deckOrListID)
-	if err != nil {
+	if err != nil {
+
 		return nil, err
 	}
 	defer rows.Close()
@@ -671,7 +699,11 @@ func (s *ResearchService) scoreDeck(deck models.Deck, cards []models.DeckCard, i
 			continue
 		}
 		required += card.Count
-		ownedCount := inventory[card.CardID]
+		// Match by card name (card_name) instead of card_id to handle different printings
+		ownedCount := inventory[card.CardName]
+		if ownedCount == 0 {
+			ownedCount = inventory[card.CardID]
+		}
 		if ownedCount > card.Count {
 			ownedCount = card.Count
 		}
