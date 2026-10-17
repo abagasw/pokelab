@@ -21,10 +21,10 @@ const heroCards = [
 ];
 
 const countdownStats = [
-  { label: 'Cards', value: '13K+' },
-  { label: 'Sets', value: '91' },
-  { label: 'Decks', value: '46' },
-  { label: 'AI', value: 'ON' },
+  { label: 'Kartu', value: '14.9K' },
+  { label: 'Decklist', value: '62K+' },
+  { label: 'Turnamen', value: '1.1K+' },
+  { label: 'Match', value: '1M+' },
 ];
 
 const spotlight = [
@@ -37,9 +37,9 @@ const spotlight = [
     meta: 'Deck library',
   },
   {
-    title: 'Inventory Research Lab',
-    description: 'Masukkan koleksi, lalu PokeLab menghitung deck meta yang paling dekat, missing card, biaya upgrade, dan prioritas beli.',
-    href: '/lab',
+    title: 'Koleksi & Rekomendasi Beli',
+    description: 'Masukkan koleksi kartumu, lalu PokeLab menghitung deck meta terdekat, kartu yang kurang, biaya upgrade, dan prioritas beli.',
+    href: '/collections',
     icon: FlaskConical,
     image: '/landing-cards/inventory-lab.webp',
     meta: 'PokeLab ID',
@@ -63,9 +63,9 @@ const spotlight = [
 ];
 
 const modules = [
-  { label: 'Recommendations', href: '/lab/recommendations', detail: 'Ranking deck meta dari collection aktif' },
-  { label: 'Anti-Meta', href: '/lab/anti-meta', detail: 'Counter plan untuk archetype target' },
-  { label: 'Collections', href: '/collections', detail: 'Inventory user untuk scoring backend' },
+  { label: 'Rekomendasi Beli', href: '/lab/recommendations', detail: 'Prioritas kartu dari koleksi aktifmu' },
+  { label: 'Lawan Meta', href: '/lab/anti-meta', detail: 'Cari deck penangkal lawan tersulit' },
+  { label: 'Bangun Deck', href: '/decks?tab=builder', detail: 'Susun deck dari satu kartu favorit' },
 ];
 
 const testimonials = [
@@ -112,12 +112,12 @@ const testimonials = [
           </div>
 
           <div class="mt-7 flex flex-col gap-3 sm:flex-row">
-            <a href="/lab" class="inline-flex h-11 items-center justify-center rounded-md bg-red-500 px-5 text-sm font-bold text-white transition-colors hover:bg-red-400">
-              Buka Research Lab
+            <a href="/decks" class="inline-flex h-11 items-center justify-center rounded-md bg-red-500 px-5 text-sm font-bold text-white transition-colors hover:bg-red-400">
+              Lihat Meta Deck Sekarang
               <ChevronRight className="ml-2 h-4 w-4" />
             </a>
-            <a href="/cards" class="inline-flex h-11 items-center justify-center rounded-md bg-white px-5 text-sm font-bold text-black transition-colors hover:bg-yellow-200">
-              Jelajahi Kartu
+            <a href="/lab" class="inline-flex h-11 items-center justify-center rounded-md bg-white px-5 text-sm font-bold text-black transition-colors hover:bg-yellow-200">
+              Coba Alat Riset
             </a>
           </div>
         </div>

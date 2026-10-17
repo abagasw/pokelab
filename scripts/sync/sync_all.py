@@ -17,8 +17,10 @@ Usage:
 Environment variables:
   DB_PATH               - path to SQLite database (default: /app/data/pokemon_tcg.db)
   IMAGE_DIR             - path to card images dir (default: /app/card-images)
-  POKEPEDIA_API_KEY     - Supabase anon key for pokepedia.id
-  POKEPEDIA_SUPABASE_URL - Supabase REST URL
+  POKEPEDIA_API_KEY     - Supabase publishable/secret key for pokepedia.id (REQUIRED for card sync)
+                          Get from pokepedia.id Supabase dashboard (new format: sb_publishable_* or sb_secret_*)
+                          Legacy anon keys disabled since 2026-06-13
+  POKEPEDIA_SUPABASE_URL - Supabase REST URL (default: https://tlauakxyrxpwnwgdywum.supabase.co/rest/v1)
   SYNC_WORKERS          - concurrent image download workers (default: 8)
   SYNC_TIMEOUT          - request timeout in seconds (default: 20)
 """
@@ -55,19 +57,34 @@ except IndexError:
 DB_PATH = Path(os.environ.get("DB_PATH", str(ROOT_DIR / "backend-go" / "pokemon_tcg.db")))
 IMAGE_DIR = Path(os.environ.get("IMAGE_DIR", str(ROOT_DIR / "frontend-astro" / "public" / "card-images")))
 POKEPEDIA_URL = os.environ.get("POKEPEDIA_SUPABASE_URL", "https://tlauakxyrxpwnwgdywum.supabase.co/rest/v1")
-POKEPEDIA_KEY = os.environ.get("POKEPEDIA_API_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsYXVha3h5cnhwd253Z2R5d3VtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4OTg2NzIsImV4cCI6MjA4ODQ3NDY3Mn0.cmXJnlBcDNzzJQyd1FPbKaveYlzWgAfGJ_2EijZkr4Q")
+POKEPEDIA_API_KEY = os.environ.get("POKEPEDIA_API_KEY") or ""
 WORKERS = int(os.environ.get("SYNC_WORKERS", "8"))
 TIMEOUT = int(os.environ.get("SYNC_TIMEOUT", "20"))
 
-POKEPEDIA_HEADERS = {
+
+def require_pokepedia_key() -> str:
+    """Hard-fail only when a card sync actually needs the key.
+
+    --tournaments-only runs keep working without any Pokepedia key.
+    """
+    if not POKEPEDIA_API_KEY:
+        print("ERROR: POKEPEDIA_API_KEY environment variable is required for Pokepedia sync.")
+        print("       Set it to a Supabase publishable key (sb_publishable_*) or secret key (sb_secret_*).")
+        print("       Legacy anon keys have been disabled by Supabase since 2026-06-13.")
+        sys.exit(1)
+    return POKEPEDIA_API_KEY
+
+
+def pokepedia_headers():
+    return {
     "Accept": "application/json",
-    "apikey": POKEPEDIA_KEY,
-    "Authorization": f"Bearer {POKEPEDIA_KEY}",
+    "apikey": require_pokepedia_key(),
+    "Authorization": f"Bearer {require_pokepedia_key()}",
     "Origin": "https://www.pokepedia.id",
     "Referer": "https://www.pokepedia.id/",
 }
 
-LIMITLESS_BASE = "https://limitlesstcg.com"
+# LIMITLESS_BASE deprecated - using LIMITLESS_API
 LIMITLESS_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36"}
 IMAGE_HEADERS = {"User-Agent": LIMITLESS_HEADERS["User-Agent"], "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"}
 LOG_FILE = Path(os.environ.get("SYNC_LOG", "/app/logs/sync.log"))
@@ -118,7 +135,17 @@ def pokepedia_get(endpoint: str, params: str = "") -> list[dict]:
     url = f"{POKEPEDIA_URL}/{endpoint}"
     if params:
         url = f"{url}?{params}"
-    resp = requests.get(url, headers=POKEPEDIA_HEADERS, timeout=TIMEOUT)
+    resp = requests.get(url, headers=pokepedia_headers(), timeout=TIMEOUT)
+    if resp.status_code == 401:
+        msg = resp.text
+        if "Legacy API keys are disabled" in msg:
+            raise RuntimeError(
+                "Supabase legacy API key is disabled. "
+                "Set POKEPEDIA_API_KEY to a new publishable key (sb_publishable_*) or secret key (sb_secret_*) "
+                "from the pokepedia.id Supabase dashboard. Legacy anon keys were disabled on 2026-06-13."
+            )
+        else:
+            raise RuntimeError(f"Supabase authentication failed (401): {msg}")
     resp.raise_for_status()
     return resp.json()
 
@@ -208,6 +235,9 @@ def download_one_image(card_id: str, remote_url: str, exp_code: str, resolve_ips
 def sync_pokepedia(dry_run: bool = False) -> dict:
     """Sync card data from Pokepedia Supabase + download images."""
     log("=== POKEPEDIA SYNC START ===")
+    # Validate API key is present (checked at module load, but double-check for clarity)
+    if not os.environ.get("POKEPEDIA_API_KEY"):
+        raise RuntimeError("POKEPEDIA_API_KEY not set. Required for Pokepedia sync.")
     stats = {"expansions": 0, "cards_synced": 0, "images_downloaded": 0,
              "images_existing": 0, "images_failed": 0, "images_skipped": 0}
 
@@ -345,8 +375,10 @@ def sync_pokepedia(dry_run: bool = False) -> dict:
     return stats
 
 # ===================================================================
-# Part 2: LimitlessTCG Tournament + Decklist Sync
+# Part 2: LimitlessTCG Tournament + Decklist Sync (via play.limitlesstcg.com API)
 # ===================================================================
+
+LIMITLESS_API = "https://play.limitlesstcg.com/api"
 
 class CardIndex:
     def __init__(self, cursor):
@@ -381,136 +413,106 @@ class CardIndex:
         return None, None
 
 
-def limitless_soup(url):
+def limitless_api_get(endpoint: str, params: str = "", retries: int = 5) -> list[dict] | dict:
+    """Fetch from play.limitlesstcg.com API with 429 backoff."""
+    url = f"{LIMITLESS_API}/{endpoint}"
+    if params:
+        url = f"{url}?{params}"
+    import time as _time
+    for attempt in range(retries):
+        try:
+            resp = requests.get(url, headers=LIMITLESS_HEADERS, timeout=30)
+            if resp.status_code == 429 and attempt < retries - 1:
+                wait = 20 * (attempt + 1)
+                log(f"  429 rate limited, backing off {wait}s ({url.rsplit('/', 2)[-2] if '/' in url else url})")
+                _time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as exc:
+            log(f"  API Error {url}: {exc}")
+            return [] if "tournaments" in endpoint else {}
+    return [] if "tournaments" in endpoint else {}
+
+
+def normalize_tournament_date(value):
+    """Best-effort ISO (YYYY-MM-DD) normalization for mixed DB date formats."""
+    if not value:
+        return ""
+    value = str(value).strip()
+    if len(value) >= 10 and value[4] == "-" and value[7] == "-":
+        return value[:10]
     try:
-        r = requests.get(url, headers=LIMITLESS_HEADERS, timeout=30)
-        r.raise_for_status()
-        return BeautifulSoup(r.text, "html.parser")
-    except Exception as exc:
-        log(f"  Error fetching {url}: {exc}")
-        return None
+        from datetime import datetime
+
+        return datetime.strptime(value, "%d %b %y").strftime("%Y-%m-%d")
+    except ValueError:
+        return value
 
 
-def scrape_tournament_list():
-    log("Fetching tournament list from LimitlessTCG...")
-    soup = limitless_soup(f"{LIMITLESS_BASE}/tournaments?game=PTCG&format=standard")
-    if not soup: return []
-    tourneys = []
-    for row in soup.find_all("tr"):
-        cols = row.find_all("td")
-        if not cols: continue
-        link = row.find("a", href=re.compile(r"/tournaments/\d+"))
-        if not link: continue
-        t_id = link.get("href").split("/")[-1]
-        if t_id in [t["id"] for t in tourneys]: continue
-        tourneys.append({"id": t_id, "name": link.text.strip(),
-                         "date": cols[0].text.strip() if cols else "",
-                         "players": cols[2].text.strip() if len(cols) > 2 else ""})
-    log(f"Found {len(tourneys)} tournaments on listing page")
-    return tourneys
-
-
-def scrape_standings(tourney_id, limit=32):
-    soup = limitless_soup(f"{LIMITLESS_BASE}/tournaments/{tourney_id}")
-    if not soup: return []
-    labs = soup.find("a", href=re.compile(r"labs\.limitlesstcg\.com.*standings"))
-    if not labs: labs = soup.find("a", href=re.compile(r"labs\.limitlesstcg\.com"))
-    if labs:
-        url = labs.get("href")
-        if "standings" not in url: url = url.rstrip("/") + "/standings"
-        return _labs_standings(url, limit)
-    table = soup.find("table", class_="standings") or soup.find("table")
-    if not table: return []
-    standings = []
-    for row in table.find_all("tr")[1:limit+1]:
-        cols = row.find_all("td")
-        if len(cols) < 2: continue
-        rank = row.get("data-rank") or cols[0].text.strip()
-        player = row.get("data-name") or cols[1].text.strip()
-        deck_name = row.get("data-deck") or ""
-        list_url = ""
-        for col in cols[2:]:
-            ll = col.find("a", href=re.compile(r"/decks/list/"))
-            if ll: list_url = LIMITLESS_BASE + ll.get("href"); break
-            if not deck_name:
-                dl = col.find("a", href=re.compile(r"/decks/"))
-                if dl: deck_name = dl.text.strip()
-        standings.append({"rank": rank, "player": player, "deck_name": deck_name or "Unknown", "list_url": list_url})
-    return standings
-
-
-def _labs_standings(url, limit):
-    soup = limitless_soup(url)
-    if not soup: return []
-    standings = []
-    for row in soup.find_all("tr")[1:limit+1]:
-        cols = row.find_all("td")
-        if len(cols) < 2: continue
-        rank = cols[0].text.strip()
-        player = cols[1].text.strip()
-        deck_name = ""
-        list_url = ""
-        for col in cols[2:]:
-            al = col.find("a", href=re.compile(r"/decks/"))
-            if al and "/list" not in (al.get("href") or "") and not deck_name:
-                imgs = al.find_all("img")
-                deck_name = " ".join(img.get("alt","").capitalize() for img in imgs) if imgs else al.text.strip()
-            ll = col.find("a", href=re.compile(r"/decklist|/list/|/decks/list/"))
-            if ll:
-                href = ll.get("href")
-                m = re.match(r"(https?://[^/]+)", url)
-                list_url = href if href.startswith("http") else (m.group(1) if m else LIMITLESS_BASE) + href
-        standings.append({"rank": rank, "player": player, "deck_name": deck_name or "Unknown", "list_url": list_url})
-    return standings
-
-
-def scrape_decklist(url):
-    if not url: return None
-    soup = limitless_soup(url)
-    if not soup: return None
-    for script in soup.find_all("script", type="application/json"):
-        if "data-sveltekit-fetched" in script.attrs and script.string and "pokemon" in script.string:
-            try:
-                data = json.loads(script.string)
-                body = json.loads(data.get("body", "{}"))
-                msg = body.get("message", {})
-                if "pokemon" in msg:
-                    dl = {"pokemon": [], "trainer": [], "energy": []}
-                    for cat in ("pokemon", "trainer", "energy"):
-                        for item in msg.get(cat, []):
-                            dl[cat].append({"count": item.get("count",0), "name": item.get("name",""),
-                                           "set": item.get("set",""), "number": item.get("number","")})
-                    return dl
-            except Exception: pass
-    dl = {"pokemon": [], "trainer": [], "energy": []}
-    container = soup.find("div", class_="decklist") or soup.find("body")
-    lines = [l.strip() for l in container.get_text("\n").split("\n") if l.strip()]
-    cur = None
-    for i, line in enumerate(lines):
-        if "Pokemon" in line or "Pok" in line: cur = "pokemon"
-        elif "Trainer" in line: cur = "trainer"
-        elif "Energy" in line: cur = "energy"
-        elif cur and re.match(r"^\d+$", line) and i+1 < len(lines):
-            dl[cur].append({"count": int(line), "name": lines[i+1]})
-    return dl if any(dl[cat] for cat in dl) else None
-
-def sync_limitless(dry_run=False):
-    log("=== LIMITLESS TCG SYNC START ===")
+def sync_limitless(dry_run=False, full=False):
+    log("=== LIMITLESS TCG SYNC START (API) ===")
     stats = {"tournaments_checked": 0, "tournaments_new": 0, "standings_scraped": 0,
-             "decklists_downloaded": 0, "decklists_imported": 0, "cards_imported": 0, "cards_missing": 0}
-
-    tourneys = scrape_tournament_list()
-    stats["tournaments_checked"] = len(tourneys)
-    if not tourneys:
-        log("No tournaments found")
-        return stats
+             "decklists_imported": 0, "cards_imported": 0, "cards_missing": 0}
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    # Get latest tournament date in DB to avoid re-fetching old ones.
+    # Dates are historically mixed: Pokepedia-era rows use "DD MMM YY"
+    # while Limitless rows use ISO "YYYY-MM-DD". Normalize before comparing.
+    cursor.execute("SELECT date FROM tournaments WHERE id LIKE 'limitless-%'")
+    db_dates = [normalize_tournament_date(r[0]) for r in cursor.fetchall() if r[0]]
+    latest_db_date = max(db_dates) if db_dates else None
+    log(f"Latest tournament in DB: {latest_db_date}")
+
+    # 1. Fetch tournaments via API (paginated, max 5 pages = 250 most recent)
+    log("Fetching tournaments from Limitless API...")
+    all_tourneys = []
+    page = 1
+    max_pages = 15
+    
+    while page <= max_pages:
+        batch = limitless_api_get("tournaments", f"game=PTCG&format=STANDARD&limit=50&page={page}")
+        if not batch:
+            break
+        all_tourneys.extend(batch)
+        # Stop if we've reached tournaments older than what we have
+        if latest_db_date and not full:
+            oldest_in_batch = min(normalize_tournament_date(t.get("date")) for t in batch)
+            if latest_db_date and oldest_in_batch <= latest_db_date:
+                log(f"Reached tournaments older than DB (oldest in batch: {oldest_in_batch[:10]})")
+                break
+        if len(batch) < 50:
+            break
+        page += 1
+        time.sleep(0.1)  # be nice to API
+
+    stats["tournaments_checked"] = len(all_tourneys)
+    log(f"Found {len(all_tourneys)} tournaments via API")
+
+    if not all_tourneys:
+        conn.close()
+        log("No tournaments found")
+        return stats
     existing = {r[0] for r in cursor.execute("SELECT id FROM tournaments").fetchall()}
-    new_tourneys = [t for t in tourneys if f"limitless-{t['id']}" not in existing]
+    if full:
+        # full mode: re-process tournaments, skipping ones whose standings
+        # already carry match records (smart resume after interruption).
+        done = {
+            r[0]
+            for r in cursor.execute(
+                "SELECT DISTINCT t.external_id FROM tournaments t "
+                "JOIN decklists dl ON dl.tournament_id = t.id "
+                "WHERE dl.win_count + dl.loss_count + dl.tie_count > 0"
+            ).fetchall()
+        }
+        new_tourneys = [t for t in all_tourneys if t["id"] not in done]
+        log(f"Skipping {len(all_tourneys) - len(new_tourneys)} tournaments already backfilled")
+    else:
+        new_tourneys = [t for t in all_tourneys if f"limitless-{t['id']}" not in existing]
     stats["tournaments_new"] = len(new_tourneys)
-    log(f"New tournaments: {len(new_tourneys)} / {len(tourneys)}")
+    log(f"Tournaments to sync: {len(new_tourneys)} / {len(all_tourneys)} (full={full})")
 
     if not new_tourneys:
         conn.close()
@@ -520,59 +522,74 @@ def sync_limitless(dry_run=False):
     if dry_run:
         conn.close()
         for t in new_tourneys:
-            log(f"  WOULD SYNC: {t['id']}: {t['name']} ({t['date']})")
+            log(f"  WOULD SYNC: {t['id']}: {t['name']} ({t['date'][:10]})")
         return stats
 
     card_index = CardIndex(cursor)
 
     for i, t in enumerate(new_tourneys):
         tid = t["id"]
-        log(f"  [{i+1}/{len(new_tourneys)}] {tid}: {t['name']}")
+        log(f"  [{i+1}/{len(new_tourneys)}] {tid}: {t['name'][:60]}")
+        # Insert tournament
         cursor.execute(
             "INSERT INTO tournaments (id, external_id, name, date, format, location, created_at) "
             "VALUES (?,?,?,?,'Standard',?,CURRENT_TIMESTAMP) "
             "ON CONFLICT(id) DO UPDATE SET name=excluded.name, date=excluded.date, location=excluded.location",
-            (f"limitless-{tid}", tid, t["name"], t["date"], t.get("players", "")))
-        standings = scrape_standings(tid, limit=32)
+            (f"limitless-{tid}", tid, t["name"], t["date"][:10], t.get("players", "")))
+
+        # 2. Fetch standings with decklists via API
+        standings = limitless_api_get(f"tournaments/{tid}/standings")
         stats["standings_scraped"] += len(standings)
-        log(f"    Standings: {len(standings)}")
+        log(f"    Standings: {len(standings)} players")
 
         for s in standings:
-            decklist = None
-            if s["list_url"]:
-                decklist = scrape_decklist(s["list_url"])
-                time.sleep(0.15)
-                if decklist: stats["decklists_downloaded"] += 1
-            if not decklist: continue
+            decklist = s.get("decklist")
+            if not decklist:
+                continue
 
-            rank = str(s.get("rank", "0"))
+            placing = s.get("placing")
             player = s.get("player", "Unknown")
-            archetype = s.get("deck_name", "Unknown")
-            deck_id = f"tourney-{tid}-{rank}"
-            deck_name = f"{archetype} ({player}) - {t['name']}"
+            name = s.get("name", player)
+            record = s.get("record", {})
+            deck_info = s.get("deck", {})
+            archetype = deck_info.get("name") or deck_info.get("id") or "Unknown"
+            deck_archetype_id = deck_info.get("id", "unknown")
+
+            rank = str(placing) if placing else "0"
+            deck_id = f"tourney-{tid}-{rank}-{player}"
+            deck_name = f"{archetype} ({name}) - {t['name']}"
 
             cursor.execute(
                 "INSERT INTO decks (id, name, archetype, description, format, tournament_count, updated_at) "
                 "VALUES (?,?,?,?,'Standard',1,CURRENT_TIMESTAMP) "
                 "ON CONFLICT(id) DO UPDATE SET name=excluded.name, archetype=excluded.archetype, "
                 "description=excluded.description, updated_at=CURRENT_TIMESTAMP",
-                (deck_id, deck_name, archetype, f"Rank {rank} at {t['name']} by {player}"))
+                (deck_id, deck_name, archetype, f"Rank {rank} at {t['name']} by {name} ({record.get('wins',0)}-{record.get('losses',0)}-{record.get('ties',0)})"))
             stats["decklists_imported"] += 1
 
             list_id = f"list-{deck_id}"
             cursor.execute(
-                "INSERT INTO decklists (id, deck_id, name, player_name, tournament_id, placement, created_at) "
-                "VALUES (?,?,?,?,?,?,CURRENT_TIMESTAMP) "
+                "INSERT INTO decklists (id, deck_id, name, player_name, tournament_id, placement, "
+                "win_count, loss_count, tie_count, points, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) "
                 "ON CONFLICT(id) DO UPDATE SET name=excluded.name, player_name=excluded.player_name, "
-                "tournament_id=excluded.tournament_id, placement=excluded.placement",
-                (list_id, deck_id, f"Official List - Rank {rank}", player, f"limitless-{tid}", to_int(rank)))
+                "tournament_id=excluded.tournament_id, placement=excluded.placement, "
+                "win_count=excluded.win_count, loss_count=excluded.loss_count, "
+                "tie_count=excluded.tie_count, points=excluded.points",
+                (list_id, deck_id, f"Official List - Rank {rank}", name, f"limitless-{tid}", placing or 0,
+                 to_int(record.get("wins")), to_int(record.get("losses")),
+                 to_int(record.get("ties")), to_int(record.get("points"))))
             cursor.execute("DELETE FROM deck_cards WHERE deck_id = ?", (deck_id,))
 
+            # Decklist from API: {"pokemon": [...], "trainer": [...], "energy": [...]}
+            # Each card: {"count": N, "set": "MEG", "number": "114", "name": "Boss's Orders"}
             for cat in ("pokemon", "trainer", "energy"):
                 for cd in decklist.get(cat, []) or []:
                     cn = cd.get("name", "")
                     cnt = to_int(cd.get("count"))
-                    if not cn or cnt <= 0: continue
+                    if not cn or cnt <= 0:
+                        continue
+                    # Match by English name (API returns English names)
                     cid, dbcat = card_index.find(cn)
                     if cid:
                         cursor.execute("INSERT INTO deck_cards (deck_id, card_id, count, is_pokemon) VALUES (?,?,?,?)",
@@ -580,11 +597,20 @@ def sync_limitless(dry_run=False):
                         stats["cards_imported"] += cnt
                     else:
                         stats["cards_missing"] += 1
-        time.sleep(0.3)
+                        # Debug: log first few missing
+                        if stats["cards_missing"] <= 5:
+                            log(f"    MISSING: {cn} ({cat})")
+
+        time.sleep(0.5)  # rate limiting (429s at higher rates)
+
+        # Commit periodically so interrupted runs keep their progress.
+        if (i + 1) % 20 == 0:
+            conn.commit()
+            log(f"    [checkpoint] committed {i + 1}/{len(new_tourneys)}")
 
     conn.commit()
     conn.close()
-    log(f"LimitlessTCG sync done: {stats['tournaments_new']} new, {stats['decklists_imported']} decklists")
+    log(f"LimitlessTCG sync done: {stats['tournaments_new']} new tournaments, {stats['decklists_imported']} decklists, {stats['cards_imported']} cards")
     return stats
 
 
@@ -597,6 +623,7 @@ def main():
     parser = argparse.ArgumentParser(description="Pokemon TCG Indonesia - Auto-Sync")
     parser.add_argument("--cards-only", action="store_true", help="Only sync Pokepedia cards + images")
     parser.add_argument("--tournaments-only", action="store_true", help="Only sync LimitlessTCG tournaments")
+    parser.add_argument("--full", action="store_true", help="Full sync: refetch all tournaments and backfill standings records")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be synced")
     args = parser.parse_args()
 
@@ -613,7 +640,7 @@ def main():
     if not args.tournaments_only:
         result["pokepedia"] = sync_pokepedia(dry_run=args.dry_run)
     if not args.cards_only:
-        result["limitless"] = sync_limitless(dry_run=args.dry_run)
+        result["limitless"] = sync_limitless(dry_run=args.dry_run, full=getattr(args, "full", False))
 
     log("=" * 60)
     log("SYNC COMPLETE")

@@ -1,51 +1,88 @@
 ---
 import Layout from '@layouts/Layout.astro';
 import PageHeader from '@components/layout/PageHeader.astro';
-import DeckBuilder from '@components/decks/DeckBuilder';
-import DeckListContainer from '@components/decks/DeckListContainer';
-import { FlaskConical, Layers3, Sparkles } from 'lucide-react';
+import MetaTable from '@components/decks/MetaTable';
+import EngineBuilder from '@components/ml/EngineBuilder';
+import MLDashboard from '@components/ml/MLDashboard';
+import { BarChart3, Wand2, LineChart } from 'lucide-react';
 
-const tab = Astro.url.searchParams.get('tab') || 'list';
+// Static output cannot see runtime query params, so all three tab panels are
+// prerendered and a small inline script toggles visibility client-side.
+const tabs = [
+  { id: 'meta', label: 'Meta Deck', icon: BarChart3 },
+  { id: 'builder', label: 'Bangun Deck', icon: Wand2 },
+  { id: 'statistik', label: 'Statistik', icon: LineChart },
+];
 ---
 
-<Layout title="Deck Pokemon TCG">
+<Layout title="Meta Deck - PokeLab">
   <div class="container px-6 py-10 md:px-8">
     <PageHeader
-      eyebrow="Deck Workbench"
-      title="Deck Pokemon TCG"
-      description="Jelajahi deck kompetitif, buka builder, lalu bandingkan dengan inventory melalui rekomendasi PokeLab."
-    >
-      <a
-        slot="actions"
-        href="/lab/recommendations"
-        class="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-      >
-        <FlaskConical className="h-4 w-4" />
-        Rekomendasi dari inventory
-      </a>
-    </PageHeader>
+      eyebrow="Meta Intelligence"
+      title="Meta Deck"
+      description="Lihat deck terkuat berdasarkan 62.000+ decklist turnamen nyata. Klik archetype untuk menelusuri decklist, atau bangun deck sendiri di sekitar kartu favoritmu."
+    />
 
-    <div class="mb-6 flex flex-wrap gap-2 border-b border-border pb-4" aria-label="Tabs">
-      <a
-        href="/decks?tab=list"
-        class={`inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors ${
-          tab === 'list' ? 'bg-primary/10 text-primary ring-1 ring-primary/20' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-        }`}
-      >
-        <Layers3 className="h-4 w-4" />
-        List Deck
-      </a>
-      <a
-        href="/decks?tab=builder"
-        class={`inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors ${
-          tab === 'builder' ? 'bg-primary/10 text-primary ring-1 ring-primary/20' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-        }`}
-      >
-        <Sparkles className="h-4 w-4" />
-        AI Deck Builder
-      </a>
+    <div id="deck-tabs" class="mb-6 flex flex-wrap gap-2 border-b border-border pb-4" aria-label="Tab deck">
+      {tabs.map((t) => (
+        <a
+          href={`/decks?tab=${t.id}`}
+          data-tab-link={t.id}
+          class="inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <t.icon className="h-4 w-4" />
+          {t.label}
+        </a>
+      ))}
     </div>
 
-    {tab === 'list' ? <DeckListContainer client:load limit={24} /> : <DeckBuilder client:load />}
+    <div data-tab-panel="meta">
+      <MetaTable client:load />
+    </div>
+    <div data-tab-panel="builder" hidden>
+      <EngineBuilder client:visible />
+    </div>
+    <div data-tab-panel="statistik" hidden>
+      <MLDashboard client:visible />
+    </div>
   </div>
+
+  <script>
+    // Client-side tab switching for the static build.
+    function applyDeckTab() {
+      const params = new URLSearchParams(window.location.search);
+      let tab = params.get('tab') || 'meta';
+      if (!['meta', 'builder', 'statistik'].includes(tab)) tab = 'meta';
+      // an engine param always lands on the builder tab (auto-build)
+      if (params.get('engine')) tab = 'builder';
+      document.querySelectorAll('[data-tab-panel]').forEach((el) => {
+        (el as HTMLElement).hidden = el.getAttribute('data-tab-panel') !== tab;
+      });
+      document.querySelectorAll('[data-tab-link]').forEach((el) => {
+        const active = el.getAttribute('data-tab-link') === tab;
+        el.className = `inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors ${
+          active
+            ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+        }`;
+        el.setAttribute('aria-current', active ? 'page' : 'false');
+      });
+    }
+    function openDeckTab(tab: string) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.pushState({}, '', url);
+      applyDeckTab();
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      applyDeckTab();
+      document.querySelectorAll('[data-tab-link]').forEach((el) => {
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          openDeckTab(el.getAttribute('data-tab-link') || 'meta');
+        });
+      });
+      window.addEventListener('popstate', applyDeckTab);
+    });
+  </script>
 </Layout>

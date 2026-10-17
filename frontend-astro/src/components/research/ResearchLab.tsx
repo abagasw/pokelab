@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import JPSignalBoard from './JPSignalBoard';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip as ChartTooltip, Legend as ChartLegend,
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import {
-  Activity, BarChart3, Brain, ChevronRight, FlaskConical, Loader2, Search, Shield, Sparkles, Target, TrendingUp, Trophy, Zap, ArrowUpRight, ArrowDownRight, Minus, Swords, Crown, Star, Heart,
+  Activity, BarChart3, Brain, ChevronRight, FlaskConical, Layers3, Loader2, Search, Shield, Sparkles, Target, TrendingDown, TrendingUp, Trophy, Zap, ArrowUpRight, ArrowDownRight, Minus, Swords, Crown, Star, Heart,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuthStore, useCollectionStore, useDeckStore, useResearchStore } from '@stores/index';
@@ -68,18 +69,21 @@ export default function ResearchLab({ mode }: ResearchLabProps) {  const { authR
       {error && <div className="border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive rounded-lg">{error}</div>}
       {mode === 'dashboard' && <DashboardView loading={loading} decksLoading={decksLoading} isAuthenticated={isAuthenticated} decks={decks} recommendations={recommendations} predictions={predictions} forecast={forecast} bestRecommendation={bestRec} />}
       {mode === 'recommendations' && (isAuthenticated ? <RecommendationsView loading={loading} collectionId={collectionId} recommendations={recommendations} generatedDecks={generatedDecks} generating={generating} onGenerate={handleGenerateDecks} advisor={advisor?.answer} question={question} setQuestion={setQuestion} onAsk={() => askAdvisor(question, JSON.stringify(recommendations.slice(0, 3)))} /> : <LoginNeededPanel />)}
-      {mode === 'anti-meta' && <AntiMetaView loading={loading} decks={decks} targetDeckId={targetDeckId} setTargetDeckId={setTargetDeckId} antiMeta={antiMeta} />}
-      {mode === 'predictions' && <PredictionsView loading={loading} category={category} setCategory={setCategory} predictions={predictions} forecast={forecast} />}
+      {mode === 'anti-meta' && <AntiMetaView loading={loading} decks={decks} targetDeckId={targetDeckId} setTargetDeckId={setTargetDeckId} antiMeta={antiMeta} forecast={forecast} targetDeckName={decks.find(d => d.id === targetDeckId)?.name || ''} />}
+      {mode === 'predictions' && <>
+        <JPSignalBoard />
+        <PredictionsView loading={loading} category={category} setCategory={setCategory} predictions={predictions} forecast={forecast} />
+      </>}
     </LabShell>
   );
 }
 
 function LabShell({ mode, children }: { mode: ResearchLabMode; children: React.ReactNode }) {
   const tabs = [
-    { href: '/lab', label: 'Meta Overview', key: 'dashboard', icon: BarChart3 },
-    { href: '/lab/recommendations', label: 'My Decks', key: 'recommendations', icon: Target },
-    { href: '/lab/anti-meta', label: 'Counter Pick', key: 'anti-meta', icon: Shield },
-    { href: '/lab/predictions', label: 'Card Watch', key: 'predictions', icon: TrendingUp },
+    { href: '/lab', label: 'Ringkasan Meta', key: 'dashboard', icon: BarChart3 },
+    { href: '/lab/recommendations', label: 'Rekomendasi Beli', key: 'recommendations', icon: Target },
+    { href: '/lab/anti-meta', label: 'Lawan Meta', key: 'anti-meta', icon: Shield },
+    { href: '/lab/predictions', label: 'Prediksi Meta', key: 'predictions', icon: TrendingUp },
   ];
   return (
     <div className="space-y-6">
@@ -604,9 +608,10 @@ function GeneratedDeckCard({ deck, rank }: { deck: any; rank: number }) {
   );
 }
 
-function AntiMetaView({ loading, decks, targetDeckId, setTargetDeckId, antiMeta }: {
+function AntiMetaView({ loading, decks, targetDeckId, setTargetDeckId, antiMeta, forecast, targetDeckName }: {
   loading: boolean; decks: { id: string; name: string }[]; targetDeckId: string;
   setTargetDeckId: (v: string) => void; antiMeta: AntiMetaRecommendation[];
+  forecast: ResearchForecastResponse | null; targetDeckName: string;
 }) {
   return (
     <div className="space-y-6">
@@ -630,6 +635,97 @@ function AntiMetaView({ loading, decks, targetDeckId, setTargetDeckId, antiMeta 
           {antiMeta.length === 0 && <div className="col-span-full"><EmptyBlock text="Select a target deck to see counter options." /></div>}
         </div>
       )}
+      <CounterPredictor forecast={forecast} targetDeckName={targetDeckName} />
+    </div>
+  );
+}
+
+/**
+ * Predictive counter model (deterministic, client-side).
+ *
+ * Counter potential untuk kandidat X vs target T dihitung dari sinyal matematis:
+ *   momentumEdge   = (X.momentum - T.momentum) / 2 + 50          -> 0..100
+ *   tierEdge       = (X.prediction_score - T.prediction_score)/2 + 50 -> 0..100
+ *   provenMeta     = min(100, X.meta_share_pct * 6)              -> proven decks score higher
+ *   reliability    = X.confidence_pct                            -> data depth signal
+ *   sleeperBonus   = X.momentum > 55 && X.meta_share_pct < 8 ? 12 : 0 -> breakout candidates
+ *   score = 0.30*momentumEdge + 0.22*tierEdge + 0.20*provenMeta + 0.18*reliability + sleeperBonus
+ */
+function predictCounterScore(x: MetaDeckPrediction, t: MetaDeckPrediction) {
+  const momentumEdge = Math.max(0, Math.min(100, (x.momentum_score - t.momentum_score) / 2 + 50));
+  const tierEdge = Math.max(0, Math.min(100, (x.prediction_score - t.prediction_score) / 2 + 50));
+  const provenMeta = Math.min(100, (x.meta_share_pct || 0) * 6);
+  const reliability = x.confidence_pct || 0;
+  const sleeperBonus = x.momentum_score > 55 && (x.meta_share_pct || 0) < 8 ? 12 : 0;
+  const score = Math.min(100,
+    0.30 * momentumEdge + 0.22 * tierEdge + 0.20 * provenMeta + 0.18 * reliability + sleeperBonus);
+  return {
+    score: Math.round(score),
+    momentumEdge: Math.round(momentumEdge),
+    tierEdge: Math.round(tierEdge),
+    provenMeta: Math.round(provenMeta),
+    reliability: Math.round(reliability),
+    sleeper: sleeperBonus > 0,
+  };
+}
+
+function CounterPredictor({ forecast, targetDeckName }: { forecast: ResearchForecastResponse | null; targetDeckName: string }) {
+  const predictions = useMemo(() => {
+    const all = forecast?.deck_predictions || [];
+    if (!all.length || !targetDeckName) return { target: null, ranked: [] as { p: MetaDeckPrediction; s: ReturnType<typeof predictCounterScore> }[] };
+    const lower = targetDeckName.toLowerCase();
+    const target =
+      all.find(a => a.representative_deck_name.toLowerCase() === lower) ||
+      all.find(a => a.archetype.toLowerCase() === lower) ||
+      all.find(a => lower.includes(a.archetype.toLowerCase()) || a.archetype.toLowerCase().includes(lower)) ||
+      null;
+    if (!target) return { target: null, ranked: [] as { p: MetaDeckPrediction; s: ReturnType<typeof predictCounterScore> }[] };
+    const ranked = all
+      .filter(a => a.archetype !== target.archetype)
+      .map(p => ({ p, s: predictCounterScore(p, target) }))
+      .sort((a, b) => b.s.score - a.s.score)
+      .slice(0, 6);
+    return { target, ranked };
+  }, [forecast, targetDeckName]);
+
+  if (!predictions.target) return null;
+
+  return (
+    <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <Brain className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-bold uppercase tracking-wider text-primary">Predictive Counter Model</h3>
+      </div>
+      <p className="mb-4 text-xs leading-5 text-muted-foreground">
+        Prediksi matematis dari sinyal momentum, tier, meta share, dan confidence setiap archetype
+        melawan <strong className="text-foreground">{predictions.target.archetype}</strong>.
+        Skor bersifat deterministik dari database turnamen, bukan jaminan hasil matchup.
+      </p>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {predictions.ranked.map(({ p, s }) => (
+          <a
+            key={p.archetype}
+            href={`/decks/archetype?name=${encodeURIComponent(p.archetype.toLowerCase().replace(/\s+/g, '-'))}`}
+            className="group rounded-lg border border-border bg-card p-4 transition-all hover:border-primary/50"
+          >
+            <div className="mb-2 flex items-start justify-between gap-2">
+              <span className="min-w-0 truncate text-sm font-bold group-hover:text-primary">{p.archetype}</span>
+              <span className={'shrink-0 font-mono text-xl font-black ' + (s.score >= 70 ? 'text-green-400' : s.score >= 55 ? 'text-amber-400' : 'text-slate-400')}>{s.score}</span>
+            </div>
+            <div className="mb-2 flex flex-wrap gap-1">
+              {s.sleeper && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">SLEEPER</span>}
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{p.growth_signal}</span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{p.meta_share_pct.toFixed(1)}% meta</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+              <span>Momentum edge <b className="text-foreground">{s.momentumEdge}</b></span>
+              <span>Tier edge <b className="text-foreground">{s.tierEdge}</b></span>
+              <span>Proven meta <b className="text-foreground">{s.provenMeta}</b></span>
+              <span>Reliability <b className="text-foreground">{s.reliability}</b></span>
+            </div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }
@@ -667,7 +763,7 @@ function CounterDeckCard({ item }: { item: AntiMetaRecommendation }) {
         </div>
       )}
       <a href={'/decks/detail?id=' + encodeURIComponent(item.counter_deck_id)} className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-lg border border-primary/30 bg-primary/10 text-xs font-semibold text-primary hover:bg-primary/15 transition-colors">
-        View Deck Details <ChevronRight className="ml-1 h-3 w-3" />
+        Lihat Detail Deck <ChevronRight className="ml-1 h-3 w-3" />
       </a>
     </div>
   );
@@ -677,69 +773,171 @@ function PredictionsView({ loading, category, setCategory, predictions, forecast
   loading: boolean; category: string; setCategory: (v: string) => void;
   predictions: MetaPrediction[]; forecast: ResearchForecastResponse | null;
 }) {
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState('score');
+  // Primary: deck-level meta predictions. Cards are a secondary view.
+  const [view, setView] = useState<'deck' | 'kartu'>('deck');
   const [page, setPage] = useState(1);
+  const decks = forecast?.deck_predictions || [];
+  const rising = useMemo(
+    () => [...decks].sort((a, b) =>
+      (b.momentum_score - a.momentum_score) || (b.prediction_score - a.prediction_score)),
+    [decks],
+  );
   const pageSize = 12;
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return predictions.filter(c => !q || (c.card_name + ' ' + c.category + ' ' + (c.card_type || '')).toLowerCase().includes(q)).sort((a, b) => {
-      switch (sort) { case 'confidence': return (b.confidence_pct || 0) - (a.confidence_pct || 0); case 'adoption': return (b.adoption_velocity || 0) - (a.adoption_velocity || 0); case 'staple': return (b.staple_index || 0) - (a.staple_index || 0); case 'name': return a.card_name.localeCompare(b.card_name); default: return (b.prediction_score || 0) - (a.prediction_score || 0); }
-    });
-  }, [predictions, query, sort]);
-  useEffect(() => { setPage(1); }, [category, query, sort]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(rising.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const visible = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
-  const catChart = useMemo(() => {
-    const counts: Record<string, number> = {};
-    predictions.forEach(c => { const cat = c.category || 'Unknown'; counts[cat] = (counts[cat] || 0) + 1; });
-    const entries = Object.entries(counts).sort(([, a], [, b]) => (b as number) - (a as number));
-    return { labels: entries.map(([c]) => c), datasets: [{ data: entries.map(([, c]) => c as number), backgroundColor: PALETTE.slice(0, entries.length).map(c => c + '88'), borderColor: PALETTE.slice(0, entries.length), borderWidth: 2 }] };
-  }, [predictions]);
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-3 md:grid-cols-4">
-        <StatCard icon={Star} label="Total Signals" value={predictions.length} color="blue" />
-        <StatCard icon={TrendingUp} label="Rising" value={predictions.filter(c => c.trend === 'rising').length} color="green" />
-        <StatCard icon={Zap} label="High Confidence" value={predictions.filter(c => (c.confidence_pct || 0) >= 70).length} color="amber" />
-        <StatCard icon={Activity} label="Watch List" value={predictions.filter(c => c.trend === 'watch').length} color="purple" />
+  const pageDecks = rising.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => { setPage(1); }, [view]);
+
+  if (view === 'kartu') {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">Tren penggunaan kartu di seluruh decklist turnamen.</p>
+          <button onClick={() => setView('deck')} className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent">
+            <Layers3 className="h-4 w-4" /> Lihat prediksi deck
+          </button>
+        </div>
+        <CardTrendsPanel loading={loading} category={category} setCategory={setCategory} predictions={predictions} />
       </div>
-      <div className="rounded-xl border bg-card p-4">
-        <div className="flex flex-wrap gap-2 mb-3">
-          {predictionFilters.map(f => (
-            <button key={f || 'all'} onClick={() => setCategory(f)} className={'h-9 rounded-md border px-3 text-sm font-medium transition-colors ' + (category === f ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground')}>{f || 'All'}</button>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Archetype diurutkan berdasarkan momentum, lengkap dari {rising.length} archetype di database turnamen ({totalPages} halaman).
+        </p>
+        <button onClick={() => setView('kartu')} className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent">
+          <Star className="h-4 w-4" /> Tren kartu
+        </button>
+      </div>
+
+      {loading && decks.length === 0 ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-28 animate-pulse rounded-xl border border-border bg-card" />
           ))}
         </div>
-        <div className="grid gap-3 md:grid-cols-[1fr_180px]">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search card name, type..." className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm" />
-          </div>
-          <select value={sort} onChange={e => setSort(e.target.value)} className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-            <option value="score">Sort by score</option><option value="confidence">Sort by confidence</option><option value="adoption">Sort by adoption</option><option value="staple">Sort by staple</option><option value="name">Sort by name</option>
-          </select>
+      ) : rising.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
+          Belum ada data prediksi deck.
         </div>
-      </div>
-      <div className="rounded-xl border bg-card p-5">
-        <div className="mb-3 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /><h3 className="font-bold text-sm">Signal Distribution by Category</h3></div>
-        <div className="h-[200px] flex items-center justify-center">
-          {catChart.labels.length > 0 ? <Doughnut data={catChart} options={{ responsive: true, maintainAspectRatio: false, cutout: '50%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 8, font: { size: 10 } } } } }} /> : <EmptyChart text="No data" />}
-        </div>
-      </div>
-      {loading && predictions.length === 0 ? <LoadingBlock /> : (
+      ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {visible.map(card => <PredictionCardEnhanced key={card.card_id} card={card} />)}
-            {visible.length === 0 && <div className="col-span-full"><EmptyBlock text="No cards match your filter." /></div>}
+        <ol className="grid gap-3 md:grid-cols-2">
+          {pageDecks.map((d) => {
+            const wr = d.match_wins + d.match_losses + d.match_ties > 0
+              ? Math.round(d.match_wins / (d.match_wins + d.match_losses + d.match_ties) * 1000) / 10
+              : 0;
+            const growth = d.growth_signal === 'surging' ? 'up' : d.growth_signal === 'consolidating' ? 'flat' : 'down';
+            return (
+              <li key={d.archetype}>
+                <a
+                  href={`/decks/archetype?name=${encodeURIComponent(d.archetype.toLowerCase().replace(/\s+/g, '-'))}`}
+                  className="group flex gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/50"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 font-mono text-sm font-bold text-primary">
+                    {rising.indexOf(d) + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-bold group-hover:text-primary">{d.archetype}</span>
+                      {growth === 'up' && <TrendingUp className="h-4 w-4 shrink-0 text-emerald-500" aria-label="Naik" />}
+                      {growth === 'flat' && <Minus className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Stabil" />}
+                      {growth === 'down' && <TrendingDown className="h-4 w-4 shrink-0 text-red-400" aria-label="Turun" />}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{d.forecast_reason}</p>
+                    <div className="mt-1.5 grid grid-cols-4 gap-x-3 font-mono text-[11px] text-muted-foreground">
+                      <span title="Skor prediksi">skor {d.prediction_score}</span>
+                      <span title="Momentum">mom {d.momentum_score}</span>
+                      <span title="Win rate match">{wr}% win</span>
+                      <span title="Meta share">{d.meta_share_pct}% meta</span>
+                    </div>
+                  </div>
+                </a>
+              </li>
+            );
+          })}
+        </ol>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Halaman {safePage} dari {totalPages} · {rising.length} archetype
+            </p>
+            <div className="flex gap-2">
+              <button
+                disabled={safePage <= 1}
+                onClick={() => setPage(safePage - 1)}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-sm font-semibold disabled:opacity-40 hover:bg-accent"
+              >
+                Sebelumnya
+              </button>
+              <button
+                disabled={safePage >= totalPages}
+                onClick={() => setPage(safePage + 1)}
+                className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-sm font-semibold disabled:opacity-40 hover:bg-accent"
+              >
+                Berikutnya
+              </button>
+            </div>
           </div>
-          <PaginationControls page={safePage} totalPages={totalPages} totalItems={filtered.length} pageSize={pageSize} label="cards" onPageChange={setPage} />
+        )}
         </>
       )}
     </div>
   );
 }
 
+/**
+ * Secondary view: card usage trends (the previous primary content).
+ */
+function CardTrendsPanel({ loading, category, setCategory, predictions }: {
+  loading: boolean; category: string; setCategory: (v: string) => void;
+  predictions: MetaPrediction[];
+}) {
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('score');
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return predictions.filter(c => !q || (c.card_name + ' ' + c.category + ' ' + (c.card_type || '')).toLowerCase().includes(q)).sort((a, b) => {
+      switch (sort) { case 'confidence': return (b.confidence_pct || 0) - (a.confidence_pct || 0); case 'adoption': return (b.adoption_velocity || 0) - (a.adoption_velocity || 0); case 'staple': return (b.staple_index || 0) - (a.staple_index || 0); case 'name': return a.card_name.localeCompare(b.card_name); default: return (b.prediction_score || 0) - (a.prediction_score || 0); }
+    });
+  }, [predictions, query, sort]);
+  const visible = filtered.slice(0, 12);
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <div className="flex flex-wrap gap-2 mb-3">
+        {predictionFilters.map(f => (
+          <button key={f || 'all'} onClick={() => setCategory(f)} className={'h-9 rounded-md border px-3 text-sm font-medium transition-colors ' + (category === f ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground')}>{f || 'Semua'}</button>
+        ))}
+      </div>
+      <div className="grid gap-3 md:grid-cols-[1fr_180px]">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari nama kartu atau tipe..." className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm" />
+        </div>
+        <select value={sort} onChange={e => setSort(e.target.value)} className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
+          <option value="score">Skor</option><option value="confidence">Keyakinan</option><option value="adoption">Adopsi</option><option value="staple">Staple</option><option value="name">Nama</option>
+        </select>
+      </div>
+      <div className="mt-3 space-y-1.5">
+        {loading && predictions.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Memuat tren kartu...</p>
+        ) : visible.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Tidak ada kartu yang cocok.</p>
+        ) : visible.map(c => (
+          <a key={c.card_id} href={`/cards/detail?id=${encodeURIComponent(c.card_id)}`} className="group flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2 transition-colors hover:border-primary/50">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium group-hover:text-primary">{c.card_name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{c.category}</span>
+            <span className="shrink-0 font-mono text-xs">{c.prediction_score}</span>
+            <span className="shrink-0 font-mono text-xs text-muted-foreground">{(c.meta_share_pct || 0).toFixed(1)}%</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
 function PredictionCardEnhanced({ card }: { card: MetaPrediction }) {
   const score = card.prediction_score || 0;
   const trend = card.trend || 'stable';

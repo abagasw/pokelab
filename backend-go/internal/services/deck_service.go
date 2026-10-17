@@ -331,13 +331,21 @@ func (s *DeckService) getDecklistCards(ctx context.Context, decklistID string) (
 	// deck_cards.deck_id may be either the decklist ID or the parent deck ID
 	// Try both: decklist ID first, then strip "list-" prefix for deck ID
 	deckID := strings.TrimPrefix(decklistID, "list-")
+	// Cards are stored by whichever printing the sync matched, which may sit
+	// outside the current legal pool. Resolve each card to its newest printing
+	// with a legal regulation mark (H/I/J) before serving deck details.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT dc.id, dc.deck_id, dc.card_id, dc.count, dc.is_pokemon,
 		       COALESCE(c.name_id, dc.card_id), COALESCE(c.category, ''),
 		       COALESCE(c.card_type, ''), COALESCE(c.image_url, ''),
 		       (SELECT MIN(price_idr) FROM card_prices cp WHERE cp.card_id = dc.card_id AND cp.price_idr IS NOT NULL AND cp.price_idr > 0)
 		FROM deck_cards dc
-		LEFT JOIN cards c ON dc.card_id = c.id
+		LEFT JOIN cards c ON c.id = COALESCE(
+			(SELECT legal.id FROM cards legal
+			 WHERE legal.name_id = (SELECT name_id FROM cards WHERE id = dc.card_id)
+			   AND legal.regulation_mark IN ('H','I','J')
+			 ORDER BY CAST(legal.id AS INTEGER) DESC LIMIT 1),
+			dc.card_id)
 		WHERE dc.deck_id IN (?, ?)
 		ORDER BY dc.is_pokemon DESC, c.category, c.name_id
 	`, decklistID, deckID)

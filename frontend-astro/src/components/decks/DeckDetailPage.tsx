@@ -784,8 +784,6 @@ function GeneratedDeckDetailPage({ deck }: { deck: any }) {
       engine: {
         draw_cards: drawCards,
         search_cards: searchCards,
-        switch_cards: trainers.filter((c: any) => (c.card_name?.toLowerCase() || '').includes('switch')).reduce((s: number, c: any) => s + c.count, 0),
-        gust_cards: trainers.filter((c: any) => (c.card_name?.toLowerCase() || '').includes('boss') || (c.card_name?.toLowerCase() || '').includes('catcher')).reduce((s: number, c: any) => s + c.count, 0),
         switch_cards: switchCards,
         gust_cards: gustCards,
         engine_score: Math.min(10, Math.round((drawCards * 0.3 + searchCards * 0.25 + switchCards * 0.15 + gustCards * 0.15 + totalCopies / 60 * 1.5) * 10) / 10),
@@ -801,7 +799,7 @@ function GeneratedDeckDetailPage({ deck }: { deck: any }) {
 
   return (
     <Shell deckName={deck.name}>
-      {/* Header — same as tournament deck detail */}
+      {/* Header: same as tournament deck detail */}
       <section className="border border-border bg-card p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -816,7 +814,7 @@ function GeneratedDeckDetailPage({ deck }: { deck: any }) {
         </div>
       </section>
 
-      {/* Stats row — same style */}
+      {/* Stats row: same style */}
       <div className="grid gap-3 md:grid-cols-4">
         <Stat icon={Trophy} label="Completeness" value={`${completeness}%`} />
         <Stat icon={Package} label="Total Cards" value={`${ownedCopies}/${totalCopies}`} />
@@ -824,13 +822,13 @@ function GeneratedDeckDetailPage({ deck }: { deck: any }) {
         <Stat icon={Wallet} label="Est. Cost" value={formatIDR(deck.estimated_cost_idr || 0)} />
       </div>
 
-      {/* Deck Scout Report — same as tournament */}
+      {/* Deck Scout Report: same as tournament */}
       <section className="border border-border bg-card p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-3 inline-flex h-8 items-center rounded-md border border-primary/25 bg-primary/10 px-3 text-xs font-semibold uppercase tracking-wide text-primary">
               <BarChart3 className="mr-2 h-4 w-4" />
-              Deck Scout Report — Hybrid
+              Deck Scout Report (Hybrid)
             </div>
             <h2 className="text-2xl font-semibold tracking-tight">Analisa Detail {deck.name}</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
@@ -858,7 +856,7 @@ function GeneratedDeckDetailPage({ deck }: { deck: any }) {
         </div>
       </div>
 
-      {/* Composition — same as tournament */}
+      {/* Composition: same as tournament */}
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel title="Komposisi Deck" description="Distribusi kartu dalam hybrid deck.">
           <CompositionBar label="Pokemon" value={pokemon.reduce((s: number, c: any) => s + c.count, 0)} total={totalCopies} tone="green" />
@@ -868,20 +866,20 @@ function GeneratedDeckDetailPage({ deck }: { deck: any }) {
 
         <Panel title="Tactical Snapshot" description="Kekuatan dan kelemahan hybrid deck.">
           <div className="grid gap-3 sm:grid-cols-2">
-            <TacticalItem title="Core Pokemon" text={deck.source_pokemon ? `${deck.source_pokemon} dari inventory — kartu utama yang sudah kamu miliki.` : '-'} />
-            <TacticalItem title="Engine" text={deck.source_engine ? `${deck.source_engine} engine — Trainer+Energy package proven dari tournament.` : '-'} />
+            <TacticalItem title="Core Pokemon" text={deck.source_pokemon ? `${deck.source_pokemon} dari inventory, kartu utama yang sudah kamu miliki.` : '-'} />
+            <TacticalItem title="Engine" text={deck.source_engine ? `${deck.source_engine} engine, paket Trainer dan Energi teruji dari turnamen.` : '-'} />
             <TacticalItem title="Strength" text={(deck.strengths || []).join('. ') || '-'} />
             <TacticalItem title="Watchout" text={(deck.weaknesses || []).join('. ') || '-'} />
           </div>
         </Panel>
       </section>
 
-      {/* Visual Decklist — same as tournament */}
+      {/* Visual Decklist: same as tournament */}
       <Panel title="Visual Decklist" description="Galeri kartu dari hybrid deck. Klik kartu untuk membuka detail.">
         <CardImageGallery cards={enrichedCards.map((c: any) => ({ ...c, deck_share_pct: totalCopies > 0 ? (c.count / totalCopies) * 100 : 0, importance: 50, role: c.source || "card" }))} deckId="generated" />
       </Panel>
 
-      {/* Card Usage Matrix — same as tournament */}
+      {/* Card Usage Matrix: same as tournament */}
       <Panel title="Card Usage Matrix" description="Detail tiap kartu: copy, role, status owned/need, dan source.">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
@@ -929,10 +927,10 @@ function GeneratedDeckDetailPage({ deck }: { deck: any }) {
         </div>
       </Panel>
 
-      {/* Advanced Analysis — consistency, mulligan, brick, engine */}
+      {/* Advanced Analysis: consistency, mulligan, brick, engine */}
       {fullAnalysis && <FullAnalysisPanel analysis={fullAnalysis} />}
 
-      {/* Missing Cards — same style as tournament */}
+      {/* Missing Cards: same style as tournament */}
       {missing.length > 0 && (
         <Panel title="Missing Cards" description="Kartu yang perlu dibeli untuk melengkapi deck.">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -1020,7 +1018,7 @@ function FullAnalysisPanel({ analysis }: { analysis: any }) {
       {/* Consistency Breakdown */}
       <div className="rounded-xl border bg-card p-5">
         <h3 className="font-bold mb-3 flex items-center gap-2"><Target className="h-4 w-4 text-blue-400" /> Consistency Simulation</h3>
-        <p className="text-xs text-muted-foreground mb-4">Hypergeometric probability — peluang draw kartu kunci di opening hand.</p>
+        <p className="text-xs text-muted-foreground mb-4">Hypergeometric probability: peluang draw kartu kunci di opening hand.</p>
         <div className="space-y-3">
           {(c.breakdown || []).map((item: any, i: number) => (
             <div key={i} className="flex items-center gap-4">
@@ -1056,7 +1054,7 @@ function FullAnalysisPanel({ analysis }: { analysis: any }) {
                 <span className={`inline-block h-2 w-2 mt-1.5 rounded-full ${s.severity === 'high' ? 'bg-red-500' : 'bg-amber-500'}`} />
                 <div>
                   <p className="font-medium">{s.scenario}</p>
-                  <p className="text-xs text-muted-foreground">P = {(s.probability * 100).toFixed(1)}% — {s.prevention}</p>
+                  <p className="text-xs text-muted-foreground">P = {(s.probability * 100).toFixed(1)}%: {s.prevention}</p>
                 </div>
               </div>
             ))}
@@ -1142,7 +1140,7 @@ function TurnSimulationPanel({ sim }: { sim: any }) {
     <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-5 space-y-5">
       <div className="flex items-center gap-2">
         <span className="text-orange-400 font-bold text-lg">⚡</span>
-        <h3 className="font-bold text-lg">Simulasi T1 & T2 — Hand Ampas</h3>
+        <h3 className="font-bold text-lg">Simulasi T1 & T2: Hand Ampas</h3>
       </div>
       <p className="text-xs text-muted-foreground">Peluang berbagai skenario hand buruk di Turn 1 dan Turn 2, beserta recovery path.</p>
 
@@ -1195,7 +1193,7 @@ function TurnSimulationPanel({ sim }: { sim: any }) {
       {/* Recovery Paths */}
       {recovery.length > 0 && (
         <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
-          <h4 className="font-bold mb-2 text-sm text-green-400">🔄 Recovery Paths — Kartu Penyelamat</h4>
+          <h4 className="font-bold mb-2 text-sm text-green-400">Recovery Paths — Kartu Penyelamat</h4>
           <div className="space-y-2">
             {recovery.map((r: any, i: number) => (
               <div key={i} className="flex items-center gap-3 text-xs">
@@ -1235,7 +1233,7 @@ function MetaMatchupPanel({ matchups }: { matchups: any[] }) {
     <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-5 space-y-4">
       <div className="flex items-center gap-2">
         <span className="text-red-400 font-bold text-lg">🎯</span>
-        <h3 className="font-bold text-lg">Meta Matchup Analysis — Detail per Deck</h3>
+        <h3 className="font-bold text-lg">Meta Matchup Analysis: detail per Deck</h3>
       </div>
       <p className="text-xs text-muted-foreground">Analisis mendalam melawan setiap top meta deck: threat cards, gameplan per fase, tech suggestions.</p>
 
@@ -1290,7 +1288,7 @@ function MetaMatchupPanel({ matchups }: { matchups: any[] }) {
                         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary shrink-0">{tp.turn}</span>
                         <div>
                           <span className="font-semibold">{tp.priority}:</span> {tp.action}
-                          {tp.notes && <span className="text-muted-foreground ml-1">— {tp.notes}</span>}
+                          {tp.notes && <span className="text-muted-foreground ml-1">· {tp.notes}</span>}
                         </div>
                       </div>
                     ))}

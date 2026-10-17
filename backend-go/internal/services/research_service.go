@@ -1,6 +1,8 @@
 package services
 
 import (
+	"time"
+	"sync"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -231,23 +233,55 @@ func (s *ResearchService) GetPredictions(ctx context.Context, category string, l
 }
 
 // GetForecast returns public model-style meta forecasts for the research lab.
+// forecastRespCache memoizes the full GetForecast response (5 min TTL).
+var forecastRespCache struct {
+	mu        sync.Mutex
+	category  string
+	limit     int
+	response  *models.ResearchForecastResponse
+	expiresAt time.Time
+}
+
+func getCachedForecast(category string, limit int) *models.ResearchForecastResponse {
+	forecastRespCache.mu.Lock()
+	defer forecastRespCache.mu.Unlock()
+	if forecastRespCache.response != nil &&
+		time.Now().Before(forecastRespCache.expiresAt) &&
+		forecastRespCache.category == category &&
+		forecastRespCache.limit >= limit {
+		return forecastRespCache.response
+	}
+	return nil
+}
+
+func setCachedForecast(category string, limit int, resp *models.ResearchForecastResponse) {
+	forecastRespCache.mu.Lock()
+	defer forecastRespCache.mu.Unlock()
+	forecastRespCache.category = category
+	forecastRespCache.limit = limit
+	forecastRespCache.response = resp
+	forecastRespCache.expiresAt = time.Now().Add(5 * time.Minute)
+}
+
 func (s *ResearchService) GetForecast(ctx context.Context, category string, limit int) (*models.ResearchForecastResponse, error) {
 	if limit <= 0 {
 		limit = 500
 	}
 
+	if cached := getCachedForecast(category, limit); cached != nil {
+		return cached, nil
+	}
 	cardPredictions, err := s.GetPredictions(ctx, category, limit)
 	if err != nil {
 		return nil, err
 	}
-
-	deckPredictions, stats, err := s.forecastDecks(ctx, limit)
+	deckPredictions, stats, err := s.cachedForecastDecks(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
 	stats.TotalCardSignals = len(cardPredictions)
 
-	return &models.ResearchForecastResponse{
+	response := &models.ResearchForecastResponse{
 		DeckPredictions: deckPredictions,
 		CardPredictions: cardPredictions,
 		LabStats:        stats,
@@ -257,7 +291,9 @@ func (s *ResearchService) GetForecast(ctx context.Context, category string, limi
 			"OpenRouter is explain-only. Ranking, confidence, and tiers are deterministic from local database signals.",
 			"Scores are scouting signals, not guarantees. Validate with matchup testing and new tournament imports.",
 		},
-	}, nil
+	}
+	setCachedForecast(category, limit, response)
+	return response, nil
 }
 
 func (s *ResearchService) enrichCardPrediction(p models.MetaPrediction, totalDecklists int) models.MetaPrediction {
@@ -311,108 +347,281 @@ func (s *ResearchService) enrichCardPrediction(p models.MetaPrediction, totalDec
 	return p
 }
 
+// loadKeyCardsBatch loads up to three Pokemon icons for each given deck,
+// in a single query. Returns deckID -> key cards.
+func (s *ResearchService) loadKeyCardsBatch(ctx context.Context, deckIDs []string) map[string][]models.KeyCard {
+	out := map[string][]models.KeyCard{}
+	if len(deckIDs) == 0 {
+		return out
+	}
+	const chunk = 400
+	for start := 0; start < len(deckIDs); start += chunk {
+		end := start + chunk
+		if end > len(deckIDs) {
+			end = len(deckIDs)
+		}
+		batch := deckIDs[start:end]
+		placeholders := make([]string, len(batch))
+		args := make([]interface{}, 0, len(batch))
+		for i, id := range batch {
+			placeholders[i] = "?"
+			args = append(args, id)
+		}
+		query := "SELECT dc.deck_id, c.id, c.name_id, COALESCE(c.image_url, '') " +
+			"FROM deck_cards dc JOIN cards c ON dc.card_id = c.id " +
+			"WHERE dc.deck_id IN (" + strings.Join(placeholders, ",") + ") " +
+			"AND dc.is_pokemon = 1 AND c.category = 'Pokemon' " +
+			"ORDER BY dc.count DESC, CAST(c.hp AS INTEGER) DESC"
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			continue
+		}
+		for rows.Next() {
+			var deckID string
+			var k models.KeyCard
+			if rows.Scan(&deckID, &k.CardID, &k.Name, &k.ImageURL) == nil {
+				if len(out[deckID]) < 3 {
+					out[deckID] = append(out[deckID], k)
+				}
+			}
+		}
+		rows.Close()
+	}
+	return out
+}
+
+// loadKeyCards returns up to three Pokemon icons for a deck row.
+// forecastCache memoizes the heavy aggregate (5 minute TTL).
+var forecastCache struct {
+	mu        sync.Mutex
+	predictions []models.MetaDeckPrediction
+	stats       models.ResearchLabStats
+	expiresAt   time.Time
+}
+
+func (s *ResearchService) cachedForecastDecks(ctx context.Context, limit int) ([]models.MetaDeckPrediction, models.ResearchLabStats, error) {
+	forecastCache.mu.Lock()
+	defer forecastCache.mu.Unlock()
+	if time.Now().Before(forecastCache.expiresAt) && len(forecastCache.predictions) >= limit {
+		out := make([]models.MetaDeckPrediction, limit)
+		copy(out, forecastCache.predictions[:limit])
+		return out, forecastCache.stats, nil
+	}
+	predictions, stats, err := s.forecastDecks(ctx, 500)
+	if err != nil {
+		return nil, stats, err
+	}
+	forecastCache.predictions = predictions
+	forecastCache.stats = stats
+	forecastCache.expiresAt = time.Now().Add(5 * time.Minute)
+	out := make([]models.MetaDeckPrediction, limit)
+	n := limit
+	if n > len(predictions) {
+		n = len(predictions)
+	}
+	copy(out, predictions[:n])
+	return out, stats, nil
+}
+
+func (s *ResearchService) loadKeyCards(ctx context.Context, deckID string) []models.KeyCard {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.id, c.name_id, COALESCE(c.image_url, '')
+		FROM deck_cards dc
+		JOIN cards c ON dc.card_id = c.id
+		WHERE dc.deck_id = ? AND dc.is_pokemon = 1 AND c.category = 'Pokemon'
+		ORDER BY dc.count DESC, CAST(c.hp AS INTEGER) DESC
+		LIMIT 3
+	`, deckID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var cards []models.KeyCard
+	for rows.Next() {
+		var k models.KeyCard
+		if rows.Scan(&k.CardID, &k.Name, &k.ImageURL) == nil {
+			cards = append(cards, k)
+		}
+	}
+	return cards
+}
+
 func (s *ResearchService) forecastDecks(ctx context.Context, limit int) ([]models.MetaDeckPrediction, models.ResearchLabStats, error) {
-
-	decks, err := s.loadMetaDecks(ctx, 500)
-
+	// Aggregate real tournament data per archetype directly in SQL:
+	// deck counts, match records (W-L-T from standings), and top-cut rates.
+	type aggRow struct {
+		archetype string
+		deckCount int
+		matchWins int
+		matchLoss int
+		matchTie  int
+		top8      int
+		repID     string
+		repName   string
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		WITH rep AS MATERIALIZED (
+			SELECT d.archetype AS arche, d.id AS rid, d.name AS rname,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY d.archetype
+			           ORDER BY COALESCE(dl.placement, 999) ASC, COALESCE(dl.win_count, 0) DESC, d.id ASC
+			       ) AS rn
+			FROM decks d
+			LEFT JOIN decklists dl ON dl.deck_id = d.id
+			WHERE d.user_id IS NULL AND COALESCE(d.archetype, '') != ''
+		)
+		SELECT
+			d.archetype,
+			COUNT(DISTINCT d.id),
+			COALESCE(SUM(dl.win_count), 0),
+			COALESCE(SUM(dl.loss_count), 0),
+			COALESCE(SUM(dl.tie_count), 0),
+			COALESCE(SUM(CASE WHEN COALESCE(dl.placement, 99) BETWEEN 1 AND 8 THEN 1 ELSE 0 END), 0),
+			COALESCE(MAX(rep.rid), ''),
+			COALESCE(MAX(rep.rname), '')
+		FROM decks d
+		LEFT JOIN decklists dl ON dl.deck_id = d.id
+		LEFT JOIN rep ON rep.arche = d.archetype AND rep.rn = 1
+		WHERE d.user_id IS NULL AND COALESCE(d.archetype, '') != ''
+		GROUP BY d.archetype
+		ORDER BY COUNT(DISTINCT d.id) DESC
+		LIMIT ?
+	`, 2000)
 	if err != nil {
 		return nil, models.ResearchLabStats{}, err
 	}
+	defer rows.Close()
 
-	type archetypeAgg struct {
-		archetype string
-		decks     []models.Deck
-		tourneys  int
-		wins      int
-		top8      int
+	var aggs []aggRow
+	totalDecks := 0
+	totalMatches := 0
+	for rows.Next() {
+		var a aggRow
+		if rows.Scan(&a.archetype, &a.deckCount, &a.matchWins, &a.matchLoss, &a.matchTie, &a.top8, &a.repID, &a.repName) == nil {
+			aggs = append(aggs, a)
+			totalDecks += a.deckCount
+			totalMatches += a.matchWins + a.matchLoss + a.matchTie
+		}
 	}
-	groups := map[string]*archetypeAgg{}
-	totalTournamentSignals := 0
-	for _, deck := range decks {
-		key := strings.TrimSpace(deck.Archetype)
-		if key == "" {
-			key = strings.TrimSpace(deck.Name)
-		}
-		if key == "" {
-			key = "Unknown"
-		}
-		group := groups[key]
-		if group == nil {
-			group = &archetypeAgg{archetype: key}
-			groups[key] = group
-		}
-		group.decks = append(group.decks, deck)
-		group.tourneys += deck.TournamentCount
-		group.wins += deck.WinCount
-		group.top8 += deck.Top8Count
-		totalTournamentSignals += deck.TournamentCount
+	if len(aggs) == 0 {
+		return nil, models.ResearchLabStats{}, fmt.Errorf("tidak ada data archetype")
 	}
 
+	// Batched key-card icons: one query for ALL representative decks instead
+	// of one query per archetype (662+ archetypes made that the hot path).
+	repIDs := make([]string, 0, len(aggs))
+	for _, a := range aggs {
+		if a.repID != "" {
+			repIDs = append(repIDs, a.repID)
+		}
+	}
+	keyCardsByDeck := s.loadKeyCardsBatch(ctx, repIDs)
 
-	predictions := make([]models.MetaDeckPrediction, 0, len(groups))
-	for _, group := range groups {
-		sort.SliceStable(group.decks, func(i, j int) bool {
-			if s.metaScore(group.decks[i]) != s.metaScore(group.decks[j]) {
-				return s.metaScore(group.decks[i]) > s.metaScore(group.decks[j])
-			}
-			return group.decks[i].Name < group.decks[j].Name
-		})
-		rep := group.decks[0]
+	predictions := make([]models.MetaDeckPrediction, 0, len(aggs))
+	for _, a := range aggs {
 		metaShare := 0.0
-		if totalTournamentSignals > 0 {
-			metaShare = float64(group.tourneys) / float64(totalTournamentSignals) * 100
+		if totalDecks > 0 {
+			metaShare = float64(a.deckCount) / float64(totalDecks) * 100
 		}
-		momentum := math.Min(100, float64(group.top8)*18+float64(group.wins)*6+math.Sqrt(float64(len(group.decks)))*7+math.Sqrt(float64(group.tourneys))*5+metaShare*0.7)
-		tournamentDepth := math.Min(100, math.Log1p(float64(group.tourneys))*9)
-		score := math.Min(100, momentum*0.42+metaShare*0.85+tournamentDepth+float64(group.top8)*4+float64(group.wins)*2)
-		confidence := math.Min(96, 42+math.Sqrt(float64(maxInt(1, group.tourneys)))*8+float64(len(group.decks))*2+float64(group.top8)*3)
+		matchTotal := a.matchWins + a.matchLoss + a.matchTie
+		matchWinPct := 0.0
+		if matchTotal > 0 {
+			matchWinPct = float64(a.matchWins) / float64(matchTotal) * 100
+		}
+		top8Rate := 0.0
+		if a.deckCount > 0 {
+			top8Rate = float64(a.top8) / float64(a.deckCount) * 100
+		}
+		depth := math.Min(100, math.Log1p(float64(a.deckCount))*13)
+		// momentum: composite of sample size, win rate and top-cut rate,
+		// calibrated to spread across 20-100 instead of saturating.
+		momentum := math.Min(100,
+			math.Sqrt(float64(a.deckCount))*1.1+
+				matchWinPct*0.35+
+				top8Rate*0.6)
+		// score: meta dominance + win rate above the 30% floor + data depth
+		// + momentum. Weights chosen so top meta ~90-97 and fringe ~20-45.
+		score := math.Min(100,
+			metaShare*4.5+
+				math.Max(0, matchWinPct-30)*1.1+
+				depth*0.35+
+				momentum*0.1)
+		confidence := math.Min(96,
+			30+math.Sqrt(float64(a.deckCount))*0.55+
+				math.Sqrt(float64(maxInt(1, matchTotal)))*0.12)
+
+		growth := "fringe"
+		switch {
+		case momentum >= 62:
+			growth = "surging"
+		case momentum >= 45:
+			growth = "consolidating"
+		case momentum >= 28:
+			growth = "watch"
+		}
+		role := "Meta watchlist"
+		switch {
+		case score >= 72:
+			role = "Tier contender"
+		case score >= 52:
+			role = "Established meta deck"
+		case score >= 32:
+			role = "Potential breakout"
+		}
+
+		drivers := []string{
+			fmt.Sprintf("%d decklist turnamen (%.2f%% meta share)", a.deckCount, metaShare),
+		}
+		if matchTotal > 0 {
+			drivers = append(drivers, fmt.Sprintf("rekor match %d-%d-%d (win rate %.1f%%)", a.matchWins, a.matchLoss, a.matchTie, matchWinPct))
+		}
+		if a.top8 > 0 {
+			drivers = append(drivers, fmt.Sprintf("%d kali masuk top cut (%.1f%% dari entri)", a.top8, top8Rate))
+		}
+		risks := []string{"Meta dapat bergeser saat rotasi"}
+		if matchTotal < 20 {
+			risks = append(risks, "sampel match kecil, skor bisa berubah signifikan")
+		}
+		if matchWinPct > 0 && matchWinPct < 45 {
+			risks = append(risks, "win rate di bawah 45%, rawan dipersuliti meta agresif")
+		}
+
 		p := models.MetaDeckPrediction{
-			Archetype:              group.archetype,
-			RepresentativeDeckID:   rep.ID,
-			RepresentativeDeckName: rep.Name,
+			KeyCards:               keyCardsByDeck[a.repID],
+			MatchWins:              a.matchWins,
+			MatchLosses:            a.matchLoss,
+			MatchTies:              a.matchTie,
+			MatchWinPct:            math.Round(matchWinPct*10) / 10,
+			Archetype:              a.archetype,
+			RepresentativeDeckID:   a.repID,
+			RepresentativeDeckName: a.repName,
 			PredictedTier:          tierFromScore(score),
 			PredictionScore:        round(score),
 			ConfidencePct:          round(confidence),
 			MomentumScore:          round(momentum),
-			MetaSharePct:           round(metaShare),
-			DeckCount:              len(group.decks),
-			TournamentCount:        group.tourneys,
-			WinCount:               group.wins,
-			Top8Count:              group.top8,
-			GrowthSignal:           deckGrowthSignal(score, momentum, metaShare),
-			ExpectedRole:           deckExpectedRole(score, metaShare),
-			Drivers: []string{
-				fmt.Sprintf("%d decklist dalam cluster archetype", len(group.decks)),
-				fmt.Sprintf("%d tournament signal tersimpan", group.tourneys),
-				fmt.Sprintf("%.1f%% estimasi meta share", metaShare),
-				fmt.Sprintf("%.1f momentum score", momentum),
-			},
-			RiskFactors: deckRiskFactors(group.tourneys, group.top8, metaShare),
+			MetaSharePct:           math.Round(metaShare*100) / 100,
+			DeckCount:              a.deckCount,
+			TournamentCount:        matchTotal,
+			WinCount:               a.matchWins,
+			Top8Count:              a.top8,
+			GrowthSignal:           growth,
+			ExpectedRole:           role,
+			ForecastReason: fmt.Sprintf("%d decklist dengan rekor %d-%d-%d (%.1f%% win rate) dan %.2f%% meta share",
+				a.deckCount, a.matchWins, a.matchLoss, a.matchTie, matchWinPct, metaShare),
+			Drivers:     drivers,
+			RiskFactors: risks,
 		}
-		p.ForecastReason = fmt.Sprintf("%s diprediksi %s dengan score %.1f karena momentum %.1f dan meta share %.1f%%.",
-			p.Archetype, strings.ToLower(p.ExpectedRole), p.PredictionScore, p.MomentumScore, p.MetaSharePct)
 		predictions = append(predictions, p)
-	}
-
-	sort.SliceStable(predictions, func(i, j int) bool {
-		if predictions[i].PredictionScore != predictions[j].PredictionScore {
-			return predictions[i].PredictionScore > predictions[j].PredictionScore
+		if limit > 0 && len(predictions) >= limit {
+			break
 		}
-		// Secondary sort: higher tournament_count first, then alphabetical
-		if predictions[i].TournamentCount != predictions[j].TournamentCount {
-			return predictions[i].TournamentCount > predictions[j].TournamentCount
-		}
-		return predictions[i].Archetype < predictions[j].Archetype
-	})
-	if len(predictions) > limit {
-		predictions = predictions[:limit]
 	}
 
 	stats := models.ResearchLabStats{
-		TotalDecks:             len(decks),
-		TotalArchetypes:        len(groups),
-		TotalTournamentSignals: totalTournamentSignals,
-		ModelVersion:           "PokeLab deterministic scout v1.2",
+		TotalDecks:             totalDecks,
+		TotalArchetypes:        len(aggs),
+		TotalTournamentSignals: totalMatches,
+		ModelVersion:           "v2-match-records",
 	}
 	return predictions, stats, nil
 }

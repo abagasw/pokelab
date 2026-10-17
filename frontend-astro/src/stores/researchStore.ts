@@ -4,6 +4,7 @@ import type {
   AIResearchAdvice,
   AntiMetaRecommendation,
   DeckGapAnalysis,
+  MetaDeckPrediction,
   MetaPrediction,
   ResearchForecastResponse,
   ResearchDeckAnalysis,
@@ -17,29 +18,43 @@ interface ResearchState {
   antiMeta: AntiMetaRecommendation[];
   predictions: MetaPrediction[];
   forecast: ResearchForecastResponse | null;
+  archetypes: MetaDeckPrediction[];
   advisor: AIResearchAdvice | null;
   loading: boolean;
   error: string | null;
+  
+  // Pagination for archetypes
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
+  
+  // Actions
   fetchRecommendations: (collectionId: string) => Promise<void>;
   fetchDeckGap: (collectionId: string, deckId: string) => Promise<void>;
   fetchDeckAnalysis: (collectionId: string, deckId: string) => Promise<void>;
   fetchAntiMeta: (targetDeckId: string) => Promise<void>;
   fetchPredictions: (category?: string) => Promise<void>;
   fetchForecast: (category?: string, limit?: number) => Promise<void>;
+  fetchArchetypes: (params?: { page?: number; limit?: number; sort?: string; q?: string; tier?: string; growth?: string; minTournaments?: number; minMetaShare?: number }) => Promise<void>;
   askAdvisor: (question: string, context?: string) => Promise<void>;
   clearError: () => void;
+  setPage: (page: number) => void;
 }
 
-export const useResearchStore = create<ResearchState>((set) => ({
+export const useResearchStore = create<ResearchState>((set, get) => ({
   recommendations: [],
   selectedGap: null,
   selectedAnalysis: null,
   antiMeta: [],
   predictions: [],
   forecast: null,
+  archetypes: [],
   advisor: null,
   loading: false,
   error: null,
+  currentPage: 1,
+  totalPages: 1,
+  totalCount: 0,
 
   fetchRecommendations: async (collectionId) => {
     set({ loading: true, error: null });
@@ -126,7 +141,14 @@ export const useResearchStore = create<ResearchState>((set) => ({
     try {
       const response = await api.getResearchForecast({ category, limit });
       if (response.success && response.data) {
-        set({ forecast: response.data, predictions: response.data.card_predictions || [] });
+        set({ 
+          forecast: response.data, 
+          predictions: response.data.card_predictions || [],
+          archetypes: response.data.deck_predictions || [],
+          totalCount: response.data.deck_predictions?.length || 0,
+          totalPages: 1,
+          currentPage: 1,
+        });
       } else {
         set({ error: response.error || 'Gagal memuat meta forecast' });
       }
@@ -135,6 +157,13 @@ export const useResearchStore = create<ResearchState>((set) => ({
     } finally {
       set({ loading: false });
     }
+  },
+
+  fetchArchetypes: async (params) => {
+    // This will be handled client-side by ArchetypeListContainer
+    // The actual data comes from fetchForecast
+    // This is a no-op but kept for API compatibility
+    set({ currentPage: params?.page || 1 });
   },
 
   askAdvisor: async (question, context) => {
@@ -154,4 +183,6 @@ export const useResearchStore = create<ResearchState>((set) => ({
   },
 
   clearError: () => set({ error: null }),
+  
+  setPage: (page: number) => set({ currentPage: page }),
 }));

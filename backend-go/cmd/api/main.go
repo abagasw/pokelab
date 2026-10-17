@@ -90,8 +90,8 @@ func main() {
 	authService := services.NewAuthService(db.DB, jwtService)
 
 	// Initialize handlers
-	cardHandler := handlers.NewCardHandler(cachedCardService.CardService)
-	deckHandler := handlers.NewDeckHandler(deckService)
+	cardHandler := handlers.NewCardHandler(cachedCardService.CardService, deckGenerator)
+	deckHandler := handlers.NewDeckHandler(deckService, deckGenerator)
 	collectionHandler := handlers.NewCollectionHandler(collectionService)
 	priceHandler := handlers.NewPriceHandler(priceService)
 	aiHandler := handlers.NewAIHandler(cachedCardService.CardService)
@@ -166,6 +166,7 @@ func main() {
 		cards := v1.Group("/cards")
 		{
 			cards.GET("", cardHandler.SearchCards)
+			cards.GET("/unique-engines", cardHandler.GetUniqueEngineCards)
 			cards.GET("/image-proxy", cardHandler.ProxyCardImage)
 			cards.GET("/by-id", cardHandler.GetCardByIDQuery)
 			cards.GET("/:id", cardHandler.GetCardByID)
@@ -189,6 +190,7 @@ func main() {
 			decks.GET("/:id/full-analysis", researchHandler.GetDeckFullAnalysis)
 			decks.POST("/resolve-cards", researchHandler.ResolveCardNames)
 			decks.POST("/build", deckHandler.BuildDeck)
+			decks.POST("/build-around", deckHandler.BuildAroundDeck)
 			decks.POST("/analyze", deckHandler.AnalyzeDeck)
 
 			// Protected deck routes
@@ -223,6 +225,7 @@ func main() {
 			research.POST("/anti-meta", researchHandler.GetAntiMeta)
 			research.GET("/predictions", researchHandler.GetPredictions)
 			research.GET("/meta-forecast", researchHandler.GetForecast)
+			research.GET("/jp-forecast", researchHandler.GetJPForecast)
 			research.POST("/advisor", researchHandler.AskAdvisor)
 
 			protectedResearch := research.Group("")

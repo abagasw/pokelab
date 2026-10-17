@@ -1,8 +1,12 @@
-﻿---
-import Layout from '@layouts/Layout.astro';
-import MLLabPage from '@components/ml/MLLabPage';
 ---
-
-<Layout title="ML Lab - PokeLab ID">
-  <MLLabPage client:load />
-</Layout>
+// Engine Builder has moved to /decks?tab=builder.
+// Static-output page: client-side redirect preserves the ?engine= param.
+---
+<script>
+  const engine = new URLSearchParams(window.location.search).get('engine');
+  const target = engine
+    ? `/decks?tab=builder&engine=${encodeURIComponent(engine)}`
+    : '/decks?tab=builder';
+  window.location.replace(target);
+</script>
+<a href="/decks?tab=builder">Lanjut ke Bangun Deck</a>

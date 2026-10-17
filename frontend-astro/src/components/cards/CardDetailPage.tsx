@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Wand2 } from 'lucide-react';
 import type { Card } from '../../types';
 import { api } from '../../api/client';
 import CardDetail from './CardDetail';
@@ -195,6 +195,23 @@ export default function CardDetailPage() {
         <ArrowLeft className="h-4 w-4 mr-1" />
         Kembali ke daftar kartu
       </a>
+      {card.category === 'Pokemon' && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/[0.05] px-4 py-3">
+          <div className="text-sm">
+            <span className="font-semibold">Punya kartu unik ini?</span>{' '}
+            <span className="text-muted-foreground">
+              Bangun deck 60-kartu di sekitarnya, dengan deteksi synergy otomatis dari ability dan data turnamen.
+            </span>
+          </div>
+          <a
+            href={`/decks?tab=builder&engine=${encodeURIComponent(card.id)}`}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Wand2 className="h-4 w-4" />
+            Build deck di sekitar kartu ini
+          </a>
+        </div>
+      )}
       <CardDetail card={card} deckUsage={deckUsage || undefined} />
     </div>
   );

@@ -172,7 +172,7 @@ export default function CollectionDetailView({ collectionId }: { collectionId: s
     setImportProgress({ current: 0, total: parsedEntries.length, matched: 0, failed: 0 });
     setImportErrors([]);
 
-    // Use bulk import endpoint — single request, no rate limit issues
+    // Use bulk import endpoint: single request, no rate limit issues
     try {
       const batchSize = 50;
       let totalMatched = 0;
@@ -431,7 +431,7 @@ export default function CollectionDetailView({ collectionId }: { collectionId: s
                 <Loader2 className="h-10 w-10 text-primary animate-spin mx-auto mb-4" />
                 <p className="text-sm font-semibold">Mengimport kartu...</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {importProgress.current} / {importProgress.total} diproses — {importProgress.matched} berhasil, {importProgress.failed} gagal
+                  {importProgress.current} / {importProgress.total} diproses, {importProgress.matched} berhasil, {importProgress.failed} gagal
                 </p>
                 <div className="mt-4 mx-auto max-w-xs h-2 bg-muted rounded-full overflow-hidden">
                   <div className="h-full bg-primary transition-all duration-300 rounded-full" style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }} />

@@ -11,12 +11,13 @@ import (
 
 // DeckHandler handles deck-related requests
 type DeckHandler struct {
-	deckService *services.DeckService
+	deckService    *services.DeckService
+	deckGenerator  *services.DeckGenerator
 }
 
 // NewDeckHandler creates a new DeckHandler
-func NewDeckHandler(deckService *services.DeckService) *DeckHandler {
-	return &DeckHandler{deckService: deckService}
+func NewDeckHandler(deckService *services.DeckService, deckGenerator *services.DeckGenerator) *DeckHandler {
+	return &DeckHandler{deckService: deckService, deckGenerator: deckGenerator}
 }
 
 // GetDecks godoc
@@ -335,4 +336,36 @@ func (h *DeckHandler) GetTournamentStandings(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, standings)
+}
+
+// BuildAroundDeck godoc
+// @Summary Build a legal 60-card deck around one engine card
+// @Description Deterministic, data-driven deck builder centered on a specific
+// @Description Pokemon engine (ability/attack synergy + decklist co-occurrence).
+// @Tags decks
+// @Accept json
+// @Produce json
+// @Param request body object{card_id=string,collection_id=string} true "Engine card"
+// @Success 200 {object} services.BuildAroundResponse
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/v1/decks/build-around [post]
+func (h *DeckHandler) BuildAroundDeck(c *gin.Context) {
+	var req struct {
+		CardID       string `json:"card_id"`
+		CollectionID string `json:"collection_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.CardID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "card_id wajib diisi"})
+		return
+	}
+	response, err := h.deckGenerator.BuildDeckAroundCard(c.Request.Context(), services.BuildAroundRequest{
+		CardID:       req.CardID,
+		CollectionID: req.CollectionID,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, response)
 }

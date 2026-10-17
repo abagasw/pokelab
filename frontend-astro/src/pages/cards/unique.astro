@@ -1,0 +1,16 @@
+---
+import Layout from '@layouts/Layout.astro';
+import PageHeader from '@components/layout/PageHeader.astro';
+import UniqueCardExplorer from '@components/cards/UniqueCardExplorer';
+---
+
+<Layout title="Kartu Unik - PokeLab">
+  <div class="container px-6 py-10 md:px-8">
+    <PageHeader
+      eyebrow="Card Intelligence"
+      title="Kartu Unik"
+      description="Deteksi otomatis kartu-kartu dengan ability dan serangan unik dari seluruh pool regulation H/I/J, siap dijadikan engine deck."
+    />
+    <UniqueCardExplorer client:load />
+  </div>
+</Layout>

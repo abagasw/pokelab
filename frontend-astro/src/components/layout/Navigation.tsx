@@ -1,8 +1,8 @@
 import { useAuthStore } from '@stores/authStore';
 import {
+  BarChart3,
   ChevronDown,
   FlaskConical,
-  Layers3,
   LogIn,
   LogOut,
   Menu,
@@ -13,11 +13,13 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+// User flow: lihat meta -> telusuri deck -> cari kartu -> kelola koleksi -> riset lanjutan.
+// Order follows the novice journey; labels are plain Indonesian (no jargon).
 const navItems = [
-  { href: '/lab', label: 'Lab', icon: FlaskConical },
+  { href: '/decks', label: 'Meta Deck', icon: BarChart3 },
   { href: '/cards', label: 'Kartu', icon: Search },
-  { href: '/decks', label: 'Deck', icon: Layers3 },
-  { href: '/collections', label: 'Inventory', icon: Package },
+  { href: '/collections', label: 'Koleksi', icon: Package },
+  { href: '/lab', label: 'Riset', icon: FlaskConical },
 ];
 
 export default function Navigation() {
@@ -108,7 +110,7 @@ export default function Navigation() {
                       onClick={() => setShowUserMenu(false)}
                     >
                       <Package className="h-4 w-4 text-muted-foreground" />
-                      Inventory
+                      Koleksi Saya
                     </a>
                     <button
                       onClick={handleLogout}

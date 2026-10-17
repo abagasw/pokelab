@@ -479,6 +479,36 @@ class ApiClient {
     }
   }
 
+  async getJPForecast(limit?: number): Promise<ApiResponse<any>> {
+    try {
+      const data = await this.get<any>('/research/jp-forecast', { params: { limit } });
+      return this.wrapResponse(data);
+    } catch (error: any) {
+      return this.wrapError(error);
+    }
+  }
+
+  async getUniqueEngineCards(params?: { pattern?: string; q?: string; limit?: number; offset?: number }): Promise<ApiResponse<any>> {
+    try {
+      const data = await this.get<any>('/cards/unique-engines', { params });
+      return this.wrapResponse(data);
+    } catch (error: any) {
+      return this.wrapError(error);
+    }
+  }
+
+  async buildDeckAround(cardId: string, collectionId?: string): Promise<ApiResponse<any>> {
+    try {
+      const data = await this.post<any>('/decks/build-around', {
+        card_id: cardId,
+        collection_id: collectionId || undefined,
+      });
+      return this.wrapResponse(data);
+    } catch (error: any) {
+      return this.wrapError(error);
+    }
+  }
+
   async saveDeck(deck: any): Promise<ApiResponse<Deck>> {
     try {
       const data = await this.post<Deck>('/decks', deck);
@@ -538,15 +568,6 @@ class ApiClient {
   async getArbitrageOpportunities(params?: { min_difference?: number; limit?: number }): Promise<ApiResponse<ArbitrageOpportunity[]>> {
     try {
       const data = await this.get<ArbitrageOpportunity[]>('/prices/arbitrage', { params });
-      return this.wrapResponse(data);
-    } catch (error: any) {
-      return this.wrapError(error);
-    }
-  }
-
-  async getPricePrediction(cardId: string): Promise<ApiResponse<PricePrediction>> {
-    try {
-      const data = await this.get<PricePrediction>(`/prices/${encodeURIComponent(cardId)}/prediction`);
       return this.wrapResponse(data);
     } catch (error: any) {
       return this.wrapError(error);
@@ -810,7 +831,9 @@ class ApiClient {
 
   async explainCard(cardId: string): Promise<ApiResponse<{ explanation: string }>> {
     try {
-      const data = await this.post<{ explanation: string }>('/ai/explain-card', { card_id: cardId });
+      // AI generation via OpenRouter regularly takes 10-30s; the default 30s
+      // axios timeout races it. Give this endpoint its own generous budget.
+      const data = await this.post<{ explanation: string }>('/ai/explain-card', { card_id: cardId }, { timeout: 90000 });
       return this.wrapResponse(data);
     } catch (error: any) {
       return this.wrapError(error);

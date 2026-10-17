@@ -104,3 +104,8 @@ main.exe
 preview.html
 docs/
 .kilo/
+
+# Secrets
+.env
+.env.backup
+.env.deploy

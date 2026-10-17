@@ -257,14 +257,16 @@ http://localhost:3000
 
 ## Import Data
 
-Jika database belum ada atau ingin reimport data:
+### 1. Full Import (dari folder `data/`)
+
+Jika database belum ada atau ingin reimport data lengkap (kartu, deck, turnamen, harga):
 
 ```bash
 cd backend-go
 go run cmd/import/main.go
 ```
 
-Jika import command membutuhkan path data di environment tertentu, gunakan:
+Dengan path data custom:
 
 ```bash
 cd backend-go
@@ -276,6 +278,249 @@ Database SQLite default akan dibuat di:
 ```text
 backend-go/pokemon_tcg.db
 ```
+
+### 2. Auto-Sync (Pokepedia + LimitlessTCG)
+
+Script `scripts/sync/sync_all.py` menyinkronkan data terbaru dari sumber online:
+
+- **Pokepedia** (kartu + gambar): butuh `POKEPEDIA_API_KEY` (Supabase publishable/secret key)
+- **LimitlessTCG** (turnamen + decklist): tidak butuh API key
+
+```bash
+# Sync semua (kartu + turnamen)
+python scripts/sync/sync_all.py
+
+# Hanya kartu + gambar Pokepedia
+python scripts/sync/sync_all.py --cards-only
+
+# Hanya turnamen + decklist LimitlessTCG
+python scripts/sync/sync_all.py --tournaments-only
+
+# Dry run (lihat apa yang akan disinkronkan)
+python scripts/sync/sync_all.py --dry-run
+```
+
+Sync terjadwal (ofelia) juga otomatis menjalankan `import_official_cards.py`
+setelah full sync harian (idempotent — kartu existing di-update, gambar existing
+di-skip). Mode `--tournaments-only` berjalan tanpa `POKEPEDIA_API_KEY`.
+
+**Environment variables untuk sync:**
+| Variable | Required | Default | Keterangan |
+|----------|----------|---------|------------|
+| `DB_PATH` | Tidak | `backend-go/pokemon_tcg.db` | Path database SQLite |
+| `IMAGE_DIR` | Tidak | `frontend-astro/public/card-images` | Folder gambar kartu |
+| `POKEPEDIA_API_KEY` | **Ya (cards-only)** | - | Supabase publishable (`sb_publishable_*`) atau secret (`sb_secret_*`) key. **Legacy anon key DISABLED sejak 2026-06-13.** |
+| `POKEPEDIA_SUPABASE_URL` | Tidak | `https://tlauakxyrxpwnwgdywum.supabase.co/rest/v1` | Supabase REST endpoint |
+| `SYNC_WORKERS` | Tidak | `8` | Worker download gambar paralel |
+| `SYNC_TIMEOUT` | Tidak | `20` | Timeout request (detik) |
+
+> ⚠️ **Penting:** Pokepedia Supabase legacy anon key telah dinonaktifkan (2026-06-13). Untuk sync kartu, Anda **harus** menyediakan `POKEPEDIA_API_KEY` berformat baru (publishable/secret key) dari dashboard Supabase pokepedia.id. Tanpa key ini, sync kartu akan gagal dengan pesan jelas.
+
+### 3. Import Kartu dari Situs Resmi (asia.pokemon-card.com)
+
+Script `scripts/sync/import_official_cards.py` mengimpor kartu + gambar langsung dari
+situs resmi Pokemon TCG Indonesia (alternatif saat Pokepedia tidak tersedia):
+
+```bash
+# Import satu expansion (contoh: MA6 "30th Celebration")
+python scripts/sync/import_official_cards.py --expansions MA6
+
+# Import beberapa expansion sekaligus
+python scripts/sync/import_official_cards.py --expansions MA6 MA5
+
+# Dry run (tanpa menulis DB / download gambar)
+python scripts/sync/import_official_cards.py --expansions MA6 --dry-run
+
+# Hanya update data DB, skip download gambar
+python scripts/sync/import_official_cards.py --expansions MA6 --skip-images
+```
+
+Fitur:
+- Paginasi otomatis via card search resmi (`/id/card-search/list/`)
+- Parse detail lengkap: HP, tipe, serangan + biaya energi, ability, weakness, resistansi, retreat, regulation mark, illustrator, Pokedex
+- Kategori otomatis (Pokemon / Trainer / Energy) + rarity dari halaman special set
+- Download gambar PNG resmi lalu konversi ke WebP (butuh `pip install --user --break-system-packages pillow`)
+- Idempotent: kartu yang sudah ada (match `expansion_code` + `collector_number`) di-update, bukan diduplikasi
+- Refresh `expansions.total_cards` otomatis
+
+> Catatan: direktori `frontend-astro/public/card-images/<SET>` harus writable oleh user
+> yang menjalankan script. Jika dimiliki root, pindahkan dulu (contoh:
+> `sudo chown -R $USER card-images/MA6`).
+
+### 4. Engine Deck Builder (build-around)
+
+Fitur `/lab/ml` dan tombol di halaman detail kartu: bangun deck 60-kartu legal
+di sekitar SATU kartu engine unik (Mew ex, Gengar ex, Bronzong, Alolan Exeggutor, dst).
+
+Cara kerja (deterministik, tanpa AI generative):
+1. **Deteksi pattern** dari teks ability/serangan kartu (data situs resmi):
+   - `bench_attacker` — ability memakai serangan Pokémon Cadangan (Mew ex "Spiral Ingatan")
+   - `energy_stacker` — scale dengan jumlah Energi (Alolan Exeggutor "Scale Up")
+   - `damage_counter` — manipulasi Token Kerusakan (Gengar ex "Vonis Mati" / "Chaos Pain")
+   - `punish_engine` — balas KO (coin flip revenge)
+   - `draw_engine` — draw support (Bronzong "Triple Draw")
+   - `mega_engine` / `big_hitter` — fallback
+2. **Partner scoring**: co-occurrence dari 4.500+ decklist turnamen (bobot 3) +
+   kecocokan pattern (damage/cost/ability, bobot 2) + kompatibilitas tipe energi
+3. **Rantai evolusi otomatis**: backward (Gastly→Haunter→Gengar ex), forward
+   (Exeggcute→Alolan Exeggutor bila user pilih basic), dan Mega evolution
+4. **Trainer core** dari decklist yang menyertai engine (Bola Ultra, Mistika, dst)
+5. **Energi** dari agregat biaya serangan engine + partner (prioritas Energi Dasar)
+6. **Explainability**: setiap pilihan punya alasan (pattern, co-occurrence count, dll)
+
+```bash
+# Endpoint
+curl -X POST http://localhost:8080/api/v1/decks/build-around \
+  -H "Content-Type: application/json" -d '{"card_id":"73466"}'
+```
+
+Validasi: selalu tepat 60 kartu, max 4 copy per nama, pool regulation H/I/J.
+
+### 5. User Flow & Navigasi
+
+Struktur menu mengikuti perjalanan user awam (novice-first IA):
+
+```
+Landing (/)
+  └─ CTA utama: "Lihat Meta Deck Sekarang"
+Nav utama (4 item, tanpa jargon):
+  1. Meta Deck  (/decks)   → tabel meta + pilihan ML + radar kartu unik
+  2. Kartu      (/cards)   → database kartu + shortcut kartu unik
+  3. Koleksi    (/collections) → koleksi pribadi → rekomendasi beli
+  4. Riset      (/lab)     → launcher 5 alat riset berorientasi tugas
+```
+
+Alur lintas fitur (cross-feature flows):
+
+| Dari | Ke | Mekanisme |
+|---|---|---|
+| Radar kartu unik | Bangun Deck | `?engine=` auto-build |
+| Detail kartu | Bangun Deck | CTA "Bangun deck di sekitar kartu ini" |
+| Tabel meta | Detail archetype | klik baris (deck browser berfilter) |
+| Detail archetype | Detail deck | klik decklist |
+| Anti-meta | Detail deck | kartu counter deck |
+| Koleksi | Rekomendasi beli | login + collection aktif |
+| `/lab/ml` (lama) | `/decks?tab=builder` | redirect yang mempertahankan `?engine=` |
+
+Konsolidasi: Engine Builder hanya di `/decks?tab=builder` (tab kedua);
+`/lab` menjadi launcher tugas, bukan dashboard padat. Halaman statistik chart
+pindah ke tab ketiga `/decks?tab=statistik`.
+
+### 7. Prediksi Meta dari Jepang (Sinyal dari Jepang)
+
+Board prediksi berbasis turnamen JP (`GET /api/v1/research/jp-forecast`),
+tampil di atas halaman Prediksi Meta (`/lab/predictions`):
+
+- **Sinyal breakout**: archetype dengan momentum tinggi di City League JP
+  namun belum muncul di meta internasional (rilis JP memimpin 3-6 bulan)
+- **Skor**: `jpShare*8 + topCutRate*0.8 + recentShare*0.3 + 15 jika global < 1%`
+- **Verdict**: Kandidat meta global / Mulai muncul / Sudah meta global / Pantau
+- Metrik per archetype: jumlah deck JP, share JP, top-cut rate, aktivitas 30 hari,
+  share global (pencocokan token fuzzy antar nama archetype)
+- Metodologi transparan di UI (panel "Cara hitung")
+
+Kartu set JP otomatis diterjemahkan ke nama Latin/Inggris via halaman
+translations limitlesstcg (konvensi nama IDN = nama Inggris), plus mapping
+manual untuk trainer/energi spesial. Nama tersimpan di `name_id` + `name_en`.
+
+### 8. Data Kartu Jepang + City League (limitlesstcg.com)
+
+**Import set kartu JP/internasional** dari database limitlesstcg.com:
+
+```bash
+# Set Jepang (mis. M6 "Storm Emeralda", rilis lebih awal dari global)
+python scripts/sync/import_limitless_cards.py --jp-sets M6
+
+# Set internasional yang belum ada di DB (MEG, MEE, ASC, DRI, 30C)
+python scripts/sync/import_limitless_cards.py --sets MEG MEE ASC DRI 30C
+```
+
+Parser mendukung Pokemon/Trainer/Energy (termasuk special energy), biaya energi
+per serangan (simbol G/R/W/L/P/F/D/M/C/N), ability, regulation mark, weakness,
+retreat, illustrator, rarity, dan download gambar webp.
+
+**Sinkronisasi turnamen City League Jepang** (listing berpaginasi -> detail ->
+decklist via `data-set`/`data-number` eksak, fallback nama Inggris):
+
+```bash
+python scripts/sync/sync_jp_tournaments.py --pages 40   # ~1000 turnamen
+```
+
+Tanpa rekor W-L-T (City League tidak mempublikasikannya), tapi placement
+(top cut) dan archetype per pemain terekam. Data JP memperkaya prediksi meta
+awal: set JP rilis 3-6 bulan sebelum internasional.
+
+### 9. Data Turnamen Skala Penuh (via Limitless API)
+
+Sinkronisasi penuh `--full` menarik seluruh turnamen Standard dari Limitless API
+(15 halaman, 750 turnamen) termasuk standings dengan rekor match W-L-T per pemain:
+
+```bash
+# Full sync + backfill rekor match (idempotent, resume otomatis)
+python scripts/sync/sync_all.py --tournaments-only --full
+```
+
+Skala data: **750 turnamen · 48.275 decklist · ~150.000 match W-L-T tercatat**
+(paritas dengan play.limitlesstcg.com/decks: 693 turnamen, 50.495 pemain).
+
+Fitur sync:
+- Commit berkala tiap 20 turnamen (proses terputus tidak kehilangan progres)
+- Backoff otomatis saat rate limit 429 (20s/40s/60s, 5 percobaan)
+- Smart resume: turnamen yang sudah punya rekor W-L-T otomatis di-skip
+- Kolom `decklists.win_count/loss_count/tie_count/points` terisi dari standings
+
+Model forecast v2 (`v2-match-records`) menghitung skor dari data match nyata:
+`skor = share×4.5 + max(0, win%−30)×1.1 + depth×0.35 + momentum×0.1`
+
+### 10. PokeLab Hub (/decks)
+
+Halaman riset utama terinspirasi play.limitlesstcg.com/decks, dipadukan statistik ML:
+
+- **Stats bar**: jumlah archetype, decklist, partisipasi turnamen, kemenangan (data nyata DB)
+- **Pilihan ML**: 3 archetype dengan skor prediksi menang tertinggi (min. 3 turnamen)
+- **Radar kartu unik**: 14 kartu unik terbaru (sort=newest, dari expansion terbaru) dengan badge pattern
+- **Tabel meta ala Limitless**: rank, ikon kartu kunci (3 Pokemon teratas decklist representatif),
+  jumlah deck, meta share, win %, skor ML, momentum & keyakinan (bar), rekor W/T8, tren naik-turun.
+  Semua kolom bisa diklik untuk sorting. Klik baris masuk ke detail archetype (browser decklist berfilter).
+- Endpoint pendukung: `key_cards` di `/research/meta-forecast`, `sort=newest` di `/cards/unique-engines`
+
+### 11. Detektor Kartu Unik (/cards/unique)
+
+Pemindai otomatis seluruh pool regulation H/I/J yang mengklasifikasi kartu
+berdasarkan pola ability & serangan (pencocokan kata kunci Indonesia dari data
+situs resmi):
+
+| Pattern | Contoh | Deteksi |
+|---|---|---|
+| `bench_attacker` | Mew ex "Spiral Ingatan" | "menggunakan semua serangan Pokémon Cadangan" |
+| `energy_manip` | Alolan Exeggutor "Scale Up" | biaya energi berkurang / HP scale dengan energi |
+| `energy_accel` | Bellibolt "Streamer Elektrik" | "tambahkan/pasang Energi" |
+| `damage_counter` | Gengar ex "Vonis Mati" | "Token Kerusakan" |
+| `punish` | Pikachu ex "Hati Pejuang" | efek balasan saat KO (word-boundary `\bKO\b`) |
+| `draw_engine` | Bronzong "Triple Draw" | "ambil N kartu" |
+| `disruption` | Jellicent ex "Kutukan Laut" | "lawan tidak dapat" / kocok / buang kartu lawan |
+| `protection` | Empoleon ex "Kuda-kuda Kaisar" | "tidak menerima kerusakan/efek" |
+| `healing` | — | "pulihkan HP" |
+| `multi_attack` | Seaking "Orkes Festival" | "serangan 2 kali" |
+| `efficiency` | — | outlier damage/energi (≥140 dmg @≤2 energi, dst.) |
+
+Fitur: skor uniqueness per kartu (bisa multi-pattern), dedupe per nama kartu
+(printing terbaik), filter + pencarian + pagination, cache in-memory 10 menit,
+dan tombol **Build Deck** langsung ke Engine Deck Builder.
+
+```bash
+curl "http://localhost:8080/api/v1/cards/unique-engines?pattern=bench_attacker&limit=10"
+```
+
+### 12. Import Koleksi Pribadi (inventory_kartu_saya.md)
+
+Script `scripts/import_inventory.py` mengimpor inventaris kartu fisik dari `inventory_kartu_saya.md` ke koleksi user `abagasw`:
+
+```bash
+python scripts/import_inventory.py
+```
+
+Ini akan membuat koleksi bernama **"Koleksi Kartu Saya"** untuk user `abagasw` dengan 319 item (884 total quantity). Item yang tidak cocok (2 item: Qia, Seila) dilaporkan karena belum ada di database Pokepedia.
 
 ## Test dan Build
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"sync"
 	"crypto/tls"
 	"io"
 	"net/http"
@@ -16,12 +17,13 @@ import (
 
 // CardHandler handles card-related requests
 type CardHandler struct {
-	cardService *services.CardService
+	cardService   *services.CardService
+	deckGenerator *services.DeckGenerator
 }
 
 // NewCardHandler creates a new CardHandler
-func NewCardHandler(cardService *services.CardService) *CardHandler {
-	return &CardHandler{cardService: cardService}
+func NewCardHandler(cardService *services.CardService, deckGenerator *services.DeckGenerator) *CardHandler {
+	return &CardHandler{cardService: cardService, deckGenerator: deckGenerator}
 }
 
 // SearchCards godoc
@@ -286,6 +288,17 @@ func (h *CardHandler) GetCardsByExpansion(c *gin.Context) {
 // @Param request body object true "Card ID"
 // @Success 200 {object} map[string]string
 // @Router /ai/explain-card [post]
+// explainCache memoizes AI explanations per card (24h TTL): OpenRouter calls
+// take 10-30s and the text is stable, so repeat views must be instant.
+var explainCache struct {
+	mu          sync.Mutex
+	entries     map[string]explanationEntry
+}
+type explanationEntry struct {
+	text      string
+	expiresAt time.Time
+}
+
 func (h *CardHandler) ExplainCard(c *gin.Context) {
 	var req struct {
 		CardID string `json:"card_id" binding:"required"`
@@ -301,11 +314,63 @@ func (h *CardHandler) ExplainCard(c *gin.Context) {
 		return
 	}
 
+	explainCache.mu.Lock()
+	if explainCache.entries == nil {
+		explainCache.entries = map[string]explanationEntry{}
+	}
+	if entry, ok := explainCache.entries[req.CardID]; ok && time.Now().Before(entry.expiresAt) {
+		explainCache.mu.Unlock()
+		c.JSON(http.StatusOK, gin.H{"explanation": entry.text, "cached": true})
+		return
+	}
+	explainCache.mu.Unlock()
+
 	explanation, err := h.cardService.ExplainCard(c.Request.Context(), req.CardID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	explainCache.mu.Lock()
+	explainCache.entries[req.CardID] = explanationEntry{
+		text:      explanation,
+		expiresAt: time.Now().Add(24 * time.Hour),
+	}
+	explainCache.mu.Unlock()
+
 	c.JSON(http.StatusOK, gin.H{"explanation": explanation})
+}
+
+// GetUniqueEngineCards godoc
+// @Summary Detect cards with unique abilities/attacks
+// @Description Scans the legal regulation pool (H/I/J) and classifies cards
+// @Description by synergy patterns: bench attackers, energy manipulation,
+// @Description damage counters, punish engines, draw engines, disruption,
+// @Description protection, healing, spread damage, and efficiency outliers.
+// @Tags cards
+// @Produce json
+// @Param pattern query string false "Filter by pattern key (e.g. bench_attacker)"
+// @Param q query string false "Search card name"
+// @Param limit query int false "Page size" default(24)
+// @Param offset query int false "Offset" default(0)
+// @Success 200 {object} services.UniqueCardsResponse
+// @Router /api/v1/cards/unique-engines [get]
+func (h *CardHandler) GetUniqueEngineCards(c *gin.Context) {
+	pattern := c.Query("pattern")
+	query := c.Query("q")
+	sortMode := c.Query("sort")
+	limit := 24
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 && v <= 100 {
+		limit = v
+	}
+	offset := 0
+	if v, err := strconv.Atoi(c.Query("offset")); err == nil && v >= 0 {
+		offset = v
+	}
+	response, err := h.deckGenerator.FindUniqueCards(c.Request.Context(), pattern, query, sortMode, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, response)
 }

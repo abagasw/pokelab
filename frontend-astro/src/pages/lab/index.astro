@@ -1,10 +1,83 @@
-﻿---
+---
 import Layout from '@layouts/Layout.astro';
-import ResearchLab from '@components/research/ResearchLab';
+import PageHeader from '@components/layout/PageHeader.astro';
+import { Brain, Shield, Microscope, ShoppingCart, BarChart3, Wand2 } from 'lucide-react';
+
+const tools = [
+  {
+    href: '/lab/predictions',
+    icon: Brain,
+    title: 'Prediksi Meta',
+    desc: 'Archetype mana yang akan naik atau turun minggu depan? Model matematis dari 62.000+ decklist turnamen.',
+    tag: 'Tanpa login',
+  },
+  {
+    href: '/lab/anti-meta',
+    icon: Shield,
+    title: 'Lawan Meta',
+    desc: 'Kalau sering kalah lawan deck tertentu, cari deck penangkalnya di sini lengkap dengan tech card.',
+    tag: 'Tanpa login',
+  },
+  {
+    href: '/lab/deck-analysis',
+    icon: Microscope,
+    title: 'Analisis Deck',
+    desc: 'Kedalaman kartu, konsistensi, simulasi tangan awal, sampai peluang brick. Untuk deck turnamen mana pun.',
+    tag: 'Tanpa login',
+  },
+  {
+    href: '/decks?tab=builder',
+    icon: Wand2,
+    title: 'Bangun Deck',
+    desc: 'Punya satu kartu favorit? Susun deck 60 kartu lengkap di sekitarnya, otomatis dari data turnamen.',
+    tag: 'Tanpa login',
+  },
+  {
+    href: '/lab/recommendations',
+    icon: ShoppingCart,
+    title: 'Rekomendasi Beli',
+    desc: 'Berdasarkan koleksi yang kamu punya, kartu apa yang paling worth it untuk dibeli selanjutnya.',
+    tag: 'Perlu login',
+  },
+];
 ---
 
-<Layout title="PokeLab - Research Lab">
+<Layout title="Riset - PokeLab">
   <div class="container px-6 py-10 md:px-8">
-    <ResearchLab client:load mode="dashboard" />
+    <PageHeader
+      eyebrow="Riset Lanjutan"
+      title="Alat Riset PokeLab"
+      description="Semua alat analisis dalam satu tempat. Pilih sesuai pertanyaan yang ingin dijawab, tidak perlu urutan khusus."
+    />
+
+    <div class="grid gap-4 md:grid-cols-2">
+      {tools.map((t) => (
+        <a
+          href={t.href}
+          class="group flex gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/50"
+        >
+          <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <t.icon className="h-5 w-5" />
+          </span>
+          <span class="min-w-0">
+            <span class="flex flex-wrap items-center gap-2">
+              <span class="text-base font-bold group-hover:text-primary">{t.title}</span>
+              <span class={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.tag === 'Perlu login' ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500'}`}>
+                {t.tag}
+              </span>
+            </span>
+            <span class="mt-1 block text-sm leading-6 text-muted-foreground">{t.desc}</span>
+          </span>
+        </a>
+      ))}
+    </div>
+
+    <div class="mt-6 rounded-xl border border-primary/25 bg-primary/[0.04] px-5 py-4">
+      <p class="text-sm text-muted-foreground">
+        Baru mulai riset deck? Mulai dari
+        <a href="/decks" class="font-semibold text-primary hover:underline"> Meta Deck</a>
+        untuk melihat deck terkuat saat ini, lalu kembali ke sini untuk analisis lebih dalam.
+      </p>
+    </div>
   </div>
 </Layout>

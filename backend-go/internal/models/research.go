@@ -211,7 +211,15 @@ type MetaPrediction struct {
 }
 
 // MetaDeckPrediction describes an archetype likely to rise or remain dominant.
+// KeyCard is a representative Pokemon from an archetype, used for row icons.
+type KeyCard struct {
+	CardID   string `json:"card_id"`
+	Name     string `json:"name"`
+	ImageURL string `json:"image_url"`
+}
+
 type MetaDeckPrediction struct {
+	KeyCards                []KeyCard `json:"key_cards"`
 	Archetype              string   `json:"archetype"`
 	RepresentativeDeckID   string   `json:"representative_deck_id"`
 	RepresentativeDeckName string   `json:"representative_deck_name"`
@@ -224,6 +232,10 @@ type MetaDeckPrediction struct {
 	TournamentCount        int      `json:"tournament_count"`
 	WinCount               int      `json:"win_count"`
 	Top8Count              int      `json:"top8_count"`
+	MatchWins              int      `json:"match_wins"`
+	MatchLosses            int      `json:"match_losses"`
+	MatchTies              int      `json:"match_ties"`
+	MatchWinPct            float64  `json:"match_win_pct"`
 	GrowthSignal           string   `json:"growth_signal"`
 	ExpectedRole           string   `json:"expected_role"`
 	ForecastReason         string   `json:"forecast_reason"`

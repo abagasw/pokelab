@@ -290,3 +290,25 @@ func (h *ResearchHandler) AskAdvisor(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// GetJPForecast godoc
+// @Summary JP City League meta signals vs global meta
+// @Description Archetype momentum from Japanese tournaments, compared with
+// @Description global meta share, to predict which decks will become meta.
+// @Tags research
+// @Produce json
+// @Param limit query int false "Max signals" default(15)
+// @Success 200 {object} services.JPForecastResponse
+// @Router /api/v1/research/jp-forecast [get]
+func (h *ResearchHandler) GetJPForecast(c *gin.Context) {
+	limit := 15
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	response, err := h.researchService.GetJPForecast(c.Request.Context(), limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, response)
+}
